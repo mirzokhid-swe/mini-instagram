@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"todo/config"
-	"todo/internal/app"
+	"mini-instagram/config"
+	"mini-instagram/internal/app"
 )
 
 func main() {

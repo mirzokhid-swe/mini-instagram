@@ -11,6 +11,8 @@ type Config struct {
 	HTTP     HTTP
 	Postgres Postgres
 	Log      Log
+	JWT      JWT
+	Media    Media
 }
 
 type HTTP struct {
@@ -24,6 +26,14 @@ type Postgres struct {
 
 type Log struct {
 	Level string `env:"LOG_LEVEL" envDefault:"debug"`
+}
+
+type JWT struct {
+	Secret string `env:"JWT_SECRET,required"`
+}
+
+type Media struct {
+	Path string `env:"MEDIA_PATH" envDefault:"media"`
 }
 
 func New() (*Config, error) {

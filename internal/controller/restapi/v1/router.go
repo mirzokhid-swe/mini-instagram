@@ -4,11 +4,13 @@ package v1
 import (
 	"github.com/gin-gonic/gin"
 
-	"todo/internal/controller/restapi/v1/http"
+	"mini-instagram/internal/controller/restapi/v1/http"
+	"mini-instagram/pkg/storage"
 )
 
 // V1 -.
 type V1 struct {
+	storage *storage.Storage
 }
 
 func (h *V1) handleResponse(c *gin.Context, status http.Status, data interface{}) {

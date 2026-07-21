@@ -2,16 +2,20 @@
 package restapi
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 
-	v1 "todo/internal/controller/restapi/v1"
+	v1 "mini-instagram/internal/controller/restapi/v1"
+	"mini-instagram/internal/controller/restapi/v1/http"
+	"mini-instagram/pkg/storage"
 )
 
-func NewRouter(handler *gin.Engine) {
+func NewRouter(handler *gin.Engine, st *storage.Storage) {
 	handler.GET("/healthz", func(c *gin.Context) {
-		c.Status(http.StatusOK)
+		c.JSON(200, http.Response{
+			Status:      "OK",
+			Description: "Service is running",
+			Data:        "OK",
+		})
 	})
 
 	api := handler.Group("/api/v1")

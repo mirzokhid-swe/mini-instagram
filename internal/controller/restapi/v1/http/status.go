@@ -53,6 +53,11 @@ var (
 		Status:      "FORBIDDEN",
 		Description: "...",
 	}
+	Conflict = Status{
+		Code:        409,
+		Status:      "CONFLICT",
+		Description: "The request conflicts with the current state of the server",
+	}
 	TooManyRequests = Status{
 		Code:        429,
 		Status:      "TOO_MANY_REQUESTS",

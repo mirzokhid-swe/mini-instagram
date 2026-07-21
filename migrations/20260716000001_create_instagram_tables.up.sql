@@ -15,7 +15,6 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS posts (
     id bigserial PRIMARY KEY,
-    uuid uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
     user_id bigint NOT NULL,
     image_path varchar(128) NOT NULL,
     thumbnail_path varchar(512),

@@ -10,11 +10,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"todo/config"
-	"todo/internal/controller/restapi"
-	"todo/pkg/httpserver"
-	"todo/pkg/logger"
-	"todo/pkg/postgres"
+	"mini-instagram/config"
+	"mini-instagram/internal/controller/restapi"
+	"mini-instagram/pkg/httpserver"
+	"mini-instagram/pkg/logger"
+	"mini-instagram/pkg/postgres"
+	"mini-instagram/pkg/storage"
 )
 
 type useCases struct {
@@ -28,11 +29,11 @@ func initUseCases(_ *postgres.Postgres) useCases {
 	return useCases{}
 }
 
-func initServers(cfg *config.Config, uc useCases, l logger.Interface) servers {
+func initServers(cfg *config.Config, uc useCases, l logger.Interface, st *storage.Storage) servers {
 	gin.SetMode(gin.ReleaseMode)
 	handler := gin.New()
 
-	restapi.NewRouter(handler)
+	restapi.NewRouter(handler, st)
 
 	httpServer := httpserver.New(handler, httpserver.Port(cfg.HTTP.Port))
 
@@ -83,8 +84,10 @@ func Run(cfg *config.Config) {
 	}
 	defer pg.Close()
 
+	st := storage.New(cfg.Media.Path)
+
 	uc := initUseCases(pg)
-	s := initServers(cfg, uc, l)
+	s := initServers(cfg, uc, l, st)
 	s.startServers(l)
 	s.waitForShutdown(l)
 }
