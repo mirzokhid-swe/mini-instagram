@@ -19,6 +19,7 @@ import (
 	jwtmanager "mini-instagram/pkg/jwt"
 	"mini-instagram/pkg/logger"
 	"mini-instagram/pkg/postgres"
+	"mini-instagram/pkg/redis"
 	"mini-instagram/pkg/storage"
 )
 
@@ -37,11 +38,11 @@ func initUseCases(pg *postgres.Postgres, cfg *config.Config, l logger.Interface)
 	}
 }
 
-func initServers(cfg *config.Config, uc useCases, l logger.Interface, st *storage.Storage) servers {
+func initServers(cfg *config.Config, uc useCases, l logger.Interface, st *storage.Storage, redisClient *redis.Client) servers {
 	gin.SetMode(gin.ReleaseMode)
 	handler := gin.New()
 
-	restapi.NewRouter(handler, uc.auth, l, st)
+	restapi.NewRouter(handler, uc.auth, l, st, redisClient)
 
 	httpServer := httpserver.New(handler, httpserver.Port(cfg.HTTP.Port))
 
@@ -94,8 +95,15 @@ func Run(cfg *config.Config) {
 
 	st := storage.New(cfg.Media.Path)
 
+	redisClient, err := redis.New(context.Background(), cfg.Redis.URL)
+	if err != nil {
+		l.Error("redis init failed; rate limiting disabled", "error", err)
+	} else {
+		defer redisClient.Close()
+	}
+
 	uc := initUseCases(pg, cfg, l)
-	s := initServers(cfg, uc, l, st)
+	s := initServers(cfg, uc, l, st, redisClient)
 	s.startServers(l)
 	s.waitForShutdown(l)
 }

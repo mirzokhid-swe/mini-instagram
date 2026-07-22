@@ -8,10 +8,11 @@ import (
 	"mini-instagram/internal/controller/restapi/v1/http"
 	"mini-instagram/internal/usecase"
 	"mini-instagram/pkg/logger"
+	"mini-instagram/pkg/redis"
 	"mini-instagram/pkg/storage"
 )
 
-func NewRouter(handler *gin.Engine, auth usecase.Auth, l logger.Interface, st *storage.Storage) {
+func NewRouter(handler *gin.Engine, auth usecase.Auth, l logger.Interface, st *storage.Storage, redisClient *redis.Client) {
 	handler.GET("/healthz", func(c *gin.Context) {
 		c.JSON(200, http.Response{
 			Status:      "OK",
@@ -22,6 +23,6 @@ func NewRouter(handler *gin.Engine, auth usecase.Auth, l logger.Interface, st *s
 
 	api := handler.Group("/api/v1")
 	{
-		v1.NewRoutes(api, auth, l, st)
+		v1.NewRoutes(api, auth, l, st, redisClient)
 	}
 }

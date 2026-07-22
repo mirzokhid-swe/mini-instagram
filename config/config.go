@@ -13,6 +13,7 @@ type Config struct {
 	Log      Log
 	JWT      JWT
 	Media    Media
+	Redis    Redis
 }
 
 type HTTP struct {
@@ -34,6 +35,10 @@ type JWT struct {
 
 type Media struct {
 	Path string `env:"MEDIA_PATH" envDefault:"media"`
+}
+
+type Redis struct {
+	URL string `env:"REDIS_URL" envDefault:"redis://localhost:6379/0"`
 }
 
 func New() (*Config, error) {
