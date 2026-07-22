@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -42,6 +43,37 @@ func (u *UseCase) CheckSignUpAvailability(ctx context.Context, email, username s
 	}
 
 	return nil
+}
+
+func (u *UseCase) Login(ctx context.Context, input request.Login) (string, error) {
+	email := strings.TrimSpace(strings.ToLower(input.Email))
+
+	user, err := u.users.FindByEmail(ctx, email)
+	if errors.Is(err, entity.ErrNotFound) {
+		u.logger.Info("login rejected", "email", email, "reason", "invalid credentials")
+		return "", entity.ErrInvalidCredentials
+	}
+	if err != nil {
+		u.logger.Error("login user lookup failed", "email", email, "error", err)
+		return "", err
+	}
+	if !user.IsActive {
+		u.logger.Info("login rejected", "user_id", user.ID, "reason", "invalid credentials")
+		return "", entity.ErrInvalidCredentials
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password)); err != nil {
+		u.logger.Info("login rejected", "user_id", user.ID, "reason", "invalid credentials")
+		return "", entity.ErrInvalidCredentials
+	}
+
+	accessToken, err := u.tokens.GenerateAccessToken(user)
+	if err != nil {
+		u.logger.Error("login access token generation failed", "user_id", user.ID, "error", err)
+		return "", fmt.Errorf("generate access token: %w", err)
+	}
+
+	u.logger.Info("user logged in", "user_id", user.ID, "email", user.Email)
+	return accessToken, nil
 }
 
 func (u *UseCase) SignUp(ctx context.Context, input request.SignUp) (string, error) {

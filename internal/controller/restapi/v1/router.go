@@ -38,4 +38,5 @@ func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, l logger.Interface, st *
 	h := &V1{auth: auth, logger: l, storage: st}
 	authRoutes := api.Group("/auth")
 	authRoutes.POST("/sign-up", h.signUp)
+	authRoutes.POST("/login", h.login)
 }

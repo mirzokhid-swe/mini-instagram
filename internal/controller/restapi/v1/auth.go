@@ -13,6 +13,36 @@ import (
 	"mini-instagram/pkg/image"
 )
 
+func (h *V1) login(c *gin.Context) {
+	var req request.Login
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Info("login request parsing failed", "error", err)
+		h.handleError(c, apihttp.BadRequest, "invalid JSON request")
+		return
+	}
+
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	if field, message := validateLogin(req); field != "" {
+		h.logger.Info("login validation failed", "field", field)
+		h.handleError(c, apihttp.BadRequest, message)
+		return
+	}
+
+	accessToken, err := h.auth.Login(c.Request.Context(), req)
+	if err != nil {
+		if errors.Is(err, entity.ErrInvalidCredentials) {
+			h.handleError(c, apihttp.Unauthorized, "invalid email or password")
+			return
+		}
+
+		h.logger.Error("login failed", "email", req.Email, "error", err)
+		h.handleError(c, apihttp.InternalServerError, "could not log in")
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, gin.H{"access_token": accessToken})
+}
+
 func (h *V1) signUp(c *gin.Context) {
 	if err := c.Request.ParseMultipartForm(image.DefaultMaxSize); err != nil {
 		h.logger.Info("signup request parsing failed", "error", err)
@@ -86,6 +116,16 @@ func (h *V1) writeSignUpError(c *gin.Context, err error) {
 		h.logger.Error("signup failed", "error", err)
 		h.handleError(c, apihttp.InternalServerError, "could not sign up")
 	}
+}
+
+func validateLogin(req request.Login) (string, string) {
+	switch {
+	case req.Email == "":
+		return "email", "email is required"
+	case req.Password == "":
+		return "password", "password is required"
+	}
+	return "", ""
 }
 
 func validateSignUp(req request.SignUp) (string, string) {

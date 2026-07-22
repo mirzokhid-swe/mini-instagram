@@ -10,4 +10,5 @@ import (
 type Auth interface {
 	CheckSignUpAvailability(ctx context.Context, email, username string) error
 	SignUp(ctx context.Context, input request.SignUp) (string, error)
+	Login(ctx context.Context, input request.Login) (string, error)
 }

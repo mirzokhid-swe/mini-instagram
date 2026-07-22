@@ -36,6 +36,34 @@ func (r *UserRepo) UsernameExists(ctx context.Context, username string) (bool, e
 	return exists, nil
 }
 
+func (r *UserRepo) FindByEmail(ctx context.Context, email string) (entity.User, error) {
+	const query = `
+		SELECT id, username, email, full_name, bio, avatar_path, password, is_active
+		FROM users
+		WHERE email = $1
+		LIMIT 1`
+
+	var user entity.User
+	err := r.pool.Pool.QueryRow(ctx, query, email).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.FullName,
+		&user.Bio,
+		&user.AvatarPath,
+		&user.PasswordHash,
+		&user.IsActive,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return entity.User{}, entity.ErrNotFound
+	}
+	if err != nil {
+		return entity.User{}, fmt.Errorf("find user by email: %w", err)
+	}
+
+	return user, nil
+}
+
 func (r *UserRepo) Create(ctx context.Context, user entity.User) (entity.User, error) {
 	const query = `
 		INSERT INTO users (email, full_name, username, bio, avatar_path, password, is_active)

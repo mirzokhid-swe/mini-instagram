@@ -8,3 +8,8 @@ type SignUp struct {
 	Password   string
 	AvatarPath string
 }
+
+type Login struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
