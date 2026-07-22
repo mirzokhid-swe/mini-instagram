@@ -4,9 +4,11 @@ package v1
 import (
 	"github.com/gin-gonic/gin"
 
+	"mini-instagram/internal/controller/restapi/middleware"
 	"mini-instagram/internal/controller/restapi/v1/http"
 	"mini-instagram/internal/usecase"
 	"mini-instagram/pkg/logger"
+	"mini-instagram/pkg/redis"
 	"mini-instagram/pkg/storage"
 )
 
@@ -15,6 +17,7 @@ type V1 struct {
 	auth    usecase.Auth
 	logger  logger.Interface
 	storage *storage.Storage
+	redis   *redis.Client
 }
 
 func (h *V1) handleResponse(c *gin.Context, status http.Status, data interface{}) {
@@ -34,9 +37,9 @@ func (h *V1) handleError(c *gin.Context, status http.Status, message string) {
 }
 
 // NewRoutes -.
-func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, l logger.Interface, st *storage.Storage) {
-	h := &V1{auth: auth, logger: l, storage: st}
+func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, l logger.Interface, st *storage.Storage, redisClient *redis.Client) {
+	h := &V1{auth: auth, logger: l, storage: st, redis: redisClient}
 	authRoutes := api.Group("/auth")
-	authRoutes.POST("/sign-up", h.signUp)
-	authRoutes.POST("/login", h.login)
+	authRoutes.POST("/sign-up", middleware.RateLimitByEmail(h.redis, "rl:signup:", h.logger), h.signUp)
+	authRoutes.POST("/login", middleware.RateLimitByEmail(h.redis, "rl:login:", h.logger), h.login)
 }
