@@ -12,28 +12,36 @@ import (
 
 	"mini-instagram/config"
 	"mini-instagram/internal/controller/restapi"
+	"mini-instagram/internal/repo/persistent"
+	"mini-instagram/internal/usecase"
+	authusecase "mini-instagram/internal/usecase/auth"
 	"mini-instagram/pkg/httpserver"
+	jwtmanager "mini-instagram/pkg/jwt"
 	"mini-instagram/pkg/logger"
 	"mini-instagram/pkg/postgres"
 	"mini-instagram/pkg/storage"
 )
 
 type useCases struct {
+	auth usecase.Auth
 }
 
 type servers struct {
 	http *httpserver.Server
 }
 
-func initUseCases(_ *postgres.Postgres) useCases {
-	return useCases{}
+func initUseCases(pg *postgres.Postgres, cfg *config.Config, l logger.Interface) useCases {
+	userRepo := persistent.NewUserRepo(pg)
+	return useCases{
+		auth: authusecase.New(userRepo, jwtmanager.New(cfg.JWT.Secret), l),
+	}
 }
 
 func initServers(cfg *config.Config, uc useCases, l logger.Interface, st *storage.Storage) servers {
 	gin.SetMode(gin.ReleaseMode)
 	handler := gin.New()
 
-	restapi.NewRouter(handler, st)
+	restapi.NewRouter(handler, uc.auth, l, st)
 
 	httpServer := httpserver.New(handler, httpserver.Port(cfg.HTTP.Port))
 
@@ -86,7 +94,7 @@ func Run(cfg *config.Config) {
 
 	st := storage.New(cfg.Media.Path)
 
-	uc := initUseCases(pg)
+	uc := initUseCases(pg, cfg, l)
 	s := initServers(cfg, uc, l, st)
 	s.startServers(l)
 	s.waitForShutdown(l)
