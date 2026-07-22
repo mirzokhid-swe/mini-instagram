@@ -7,6 +7,7 @@ import (
 	"mini-instagram/internal/controller/restapi/middleware"
 	"mini-instagram/internal/controller/restapi/v1/http"
 	"mini-instagram/internal/usecase"
+	jwtmanager "mini-instagram/pkg/jwt"
 	"mini-instagram/pkg/logger"
 	"mini-instagram/pkg/redis"
 	"mini-instagram/pkg/storage"
@@ -15,6 +16,7 @@ import (
 // V1 -.
 type V1 struct {
 	auth    usecase.Auth
+	posts   usecase.Post
 	logger  logger.Interface
 	storage *storage.Storage
 	redis   *redis.Client
@@ -37,9 +39,15 @@ func (h *V1) handleError(c *gin.Context, status http.Status, message string) {
 }
 
 // NewRoutes -.
-func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, l logger.Interface, st *storage.Storage, redisClient *redis.Client) {
-	h := &V1{auth: auth, logger: l, storage: st, redis: redisClient}
+func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, tokens *jwtmanager.TokenManager, l logger.Interface, st *storage.Storage, redisClient *redis.Client) {
+	h := &V1{auth: auth, posts: posts, logger: l, storage: st, redis: redisClient}
 	authRoutes := api.Group("/auth")
 	authRoutes.POST("/sign-up", middleware.RateLimitByEmail(h.redis, "rl:signup:", h.logger), h.signUp)
 	authRoutes.POST("/login", middleware.RateLimitByEmail(h.redis, "rl:login:", h.logger), h.login)
+
+	protected := api.Group("/")
+	protected.Use(middleware.Auth(tokens))
+	{
+		protected.POST("/post", h.createPost)
+	}
 }

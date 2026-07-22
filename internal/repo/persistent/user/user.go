@@ -1,4 +1,4 @@
-package persistent
+package user
 
 import (
 	"context"
