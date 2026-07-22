@@ -12,3 +12,7 @@ type Auth interface {
 	SignUp(ctx context.Context, input request.SignUp) (string, error)
 	Login(ctx context.Context, input request.Login) (string, error)
 }
+
+type Post interface {
+	Create(ctx context.Context, input request.CreatePost) error
+}

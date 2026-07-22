@@ -12,9 +12,11 @@ import (
 
 	"mini-instagram/config"
 	"mini-instagram/internal/controller/restapi"
-	"mini-instagram/internal/repo/persistent"
+	postrepo "mini-instagram/internal/repo/persistent/post"
+	userrepo "mini-instagram/internal/repo/persistent/user"
 	"mini-instagram/internal/usecase"
 	authusecase "mini-instagram/internal/usecase/auth"
+	postusecase "mini-instagram/internal/usecase/post"
 	"mini-instagram/pkg/httpserver"
 	jwtmanager "mini-instagram/pkg/jwt"
 	"mini-instagram/pkg/logger"
@@ -24,25 +26,28 @@ import (
 )
 
 type useCases struct {
-	auth usecase.Auth
+	auth  usecase.Auth
+	posts usecase.Post
 }
 
 type servers struct {
 	http *httpserver.Server
 }
 
-func initUseCases(pg *postgres.Postgres, cfg *config.Config, l logger.Interface) useCases {
-	userRepo := persistent.NewUserRepo(pg)
+func initUseCases(pg *postgres.Postgres, cfg *config.Config, l logger.Interface, st *storage.Storage) useCases {
+	userRepo := userrepo.NewUserRepo(pg)
+	postRepo := postrepo.NewPostRepo(pg)
 	return useCases{
-		auth: authusecase.New(userRepo, jwtmanager.New(cfg.JWT.Secret), l),
+		auth:  authusecase.New(userRepo, jwtmanager.New(cfg.JWT.Secret), l),
+		posts: postusecase.New(postRepo, st, l),
 	}
 }
 
-func initServers(cfg *config.Config, uc useCases, l logger.Interface, st *storage.Storage, redisClient *redis.Client) servers {
+func initServers(cfg *config.Config, uc useCases, l logger.Interface, st *storage.Storage, redisClient *redis.Client, tokens *jwtmanager.TokenManager) servers {
 	gin.SetMode(gin.ReleaseMode)
 	handler := gin.New()
 
-	restapi.NewRouter(handler, uc.auth, l, st, redisClient)
+	restapi.NewRouter(handler, uc.auth, uc.posts, tokens, l, st, redisClient)
 
 	httpServer := httpserver.New(handler, httpserver.Port(cfg.HTTP.Port))
 
@@ -102,8 +107,9 @@ func Run(cfg *config.Config) {
 		defer redisClient.Close()
 	}
 
-	uc := initUseCases(pg, cfg, l)
-	s := initServers(cfg, uc, l, st, redisClient)
+	uc := initUseCases(pg, cfg, l, st)
+	tokens := jwtmanager.New(cfg.JWT.Secret)
+	s := initServers(cfg, uc, l, st, redisClient, tokens)
 	s.startServers(l)
 	s.waitForShutdown(l)
 }

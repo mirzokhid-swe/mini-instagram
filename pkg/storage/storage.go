@@ -40,3 +40,13 @@ func (s *Storage) Save(filename string, content io.Reader) (string, error) {
 
 	return filename, nil
 }
+
+// FullPath returns the absolute filesystem path for a stored relative filename.
+func (s *Storage) FullPath(filename string) string {
+	return filepath.Join(s.basePath, filename)
+}
+
+// Delete removes the file at filename under basePath.
+func (s *Storage) Delete(filename string) error {
+	return os.Remove(filepath.Join(s.basePath, filename))
+}
