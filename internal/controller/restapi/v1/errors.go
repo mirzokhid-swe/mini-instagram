@@ -43,6 +43,8 @@ func (h *V1) handleUsecaseError(c *gin.Context, err error, logMsg string, logFie
 		h.handleError(c, apihttp.Conflict, "already following")
 	case errors.Is(err, entity.ErrNotFollowing):
 		h.handleError(c, apihttp.Conflict, "not following")
+	case errors.Is(err, entity.ErrNotificationNotFound):
+		h.handleError(c, apihttp.NOT_FOUND, "notification not found")
 	default:
 		h.logger.Error(logMsg, append(logFields, "error", err)...)
 		h.handleError(c, apihttp.InternalServerError, "internal server error")

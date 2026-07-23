@@ -36,3 +36,8 @@ type User interface {
 	Follow(ctx context.Context, followerID, followingID int64) error
 	Unfollow(ctx context.Context, followerID, followingID int64) error
 }
+
+type Notification interface {
+	List(ctx context.Context, userID int64, page, perPage int) (response.NotificationList, error)
+	MarkRead(ctx context.Context, notificationID, userID int64) error
+}
