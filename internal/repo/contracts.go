@@ -12,6 +12,7 @@ type User interface {
 	FindByEmail(ctx context.Context, email string) (entity.User, error)
 	FindByID(ctx context.Context, id int64) (entity.User, error)
 	Create(ctx context.Context, user entity.User) (entity.User, error)
+	Update(ctx context.Context, user entity.User) error
 	GetProfileStats(ctx context.Context, userID int64) (postsCount, followersCount, followingCount int64, err error)
 	IsFollowing(ctx context.Context, followerID, followingID int64) (bool, error)
 }

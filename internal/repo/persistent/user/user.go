@@ -116,6 +116,32 @@ func (r *UserRepo) IsFollowing(ctx context.Context, followerID, followingID int6
 	return exists, nil
 }
 
+func (r *UserRepo) Update(ctx context.Context, user entity.User) error {
+	const query = `
+		UPDATE users
+		SET username = $1, full_name = $2, bio = $3, avatar_path = $4
+		WHERE id = $5`
+
+	tag, err := r.pool.Pool.Exec(ctx, query,
+		user.Username,
+		user.FullName,
+		user.Bio,
+		user.AvatarPath,
+		user.ID,
+	)
+	if err == nil && tag.RowsAffected() == 0 {
+		return entity.ErrNotFound
+	}
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "users_username_key" {
+			return entity.ErrUsernameTaken
+		}
+		return fmt.Errorf("update user: %w", err)
+	}
+	return nil
+}
+
 func (r *UserRepo) Create(ctx context.Context, user entity.User) (entity.User, error) {
 	const query = `
 		INSERT INTO users (email, full_name, username, bio, avatar_path, password, is_active)

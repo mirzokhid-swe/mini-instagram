@@ -50,7 +50,11 @@ func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, user
 	protected := api.Group("/")
 	protected.Use(middleware.Auth(tokens))
 	{
-		protected.GET("/profile", h.getProfile)
+		protected.Group("/profile")
+		{
+			protected.GET("", h.getProfile)
+			protected.PUT("", h.editProfile)
+		}
 
 		protected.Group("post")
 		{

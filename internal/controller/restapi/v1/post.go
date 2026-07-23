@@ -1,13 +1,10 @@
 package v1
 
 import (
-	"errors"
-
 	"github.com/gin-gonic/gin"
 
 	apihttp "mini-instagram/internal/controller/restapi/v1/http"
 	"mini-instagram/internal/controller/restapi/v1/request"
-	"mini-instagram/internal/entity"
 	"mini-instagram/pkg/image"
 )
 
@@ -41,13 +38,7 @@ func (h *V1) createPost(c *gin.Context) {
 	defer file.Close()
 
 	if err := h.posts.Create(c.Request.Context(), request.CreatePost{UserID: uid, Caption: caption, File: file, Header: header}); err != nil {
-		switch {
-		case errors.Is(err, entity.ErrNotFound):
-			h.handleError(c, apihttp.NOT_FOUND, "user not found")
-		default:
-			h.logger.Error("create post failed", "user_id", uid, "error", err)
-			h.handleError(c, apihttp.BadRequest, err.Error())
-		}
+		h.handleUsecaseError(c, err, "create post failed", "user_id", uid)
 		return
 	}
 
