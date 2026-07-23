@@ -17,6 +17,7 @@ import (
 	"mini-instagram/internal/usecase"
 	authusecase "mini-instagram/internal/usecase/auth"
 	postusecase "mini-instagram/internal/usecase/post"
+	userusecase "mini-instagram/internal/usecase/user"
 	"mini-instagram/pkg/httpserver"
 	jwtmanager "mini-instagram/pkg/jwt"
 	"mini-instagram/pkg/logger"
@@ -28,6 +29,7 @@ import (
 type useCases struct {
 	auth  usecase.Auth
 	posts usecase.Post
+	users usecase.User
 }
 
 type servers struct {
@@ -40,6 +42,7 @@ func initUseCases(pg *postgres.Postgres, cfg *config.Config, l logger.Interface,
 	return useCases{
 		auth:  authusecase.New(userRepo, jwtmanager.New(cfg.JWT.Secret), l),
 		posts: postusecase.New(postRepo, st, l),
+		users: userusecase.New(userRepo, postRepo),
 	}
 }
 
@@ -47,7 +50,7 @@ func initServers(cfg *config.Config, uc useCases, l logger.Interface, st *storag
 	gin.SetMode(gin.ReleaseMode)
 	handler := gin.New()
 
-	restapi.NewRouter(handler, uc.auth, uc.posts, tokens, l, st, redisClient)
+	restapi.NewRouter(handler, uc.auth, uc.posts, uc.users, tokens, l, st, redisClient)
 
 	httpServer := httpserver.New(handler, httpserver.Port(cfg.HTTP.Port))
 
