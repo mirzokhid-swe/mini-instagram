@@ -11,6 +11,7 @@ import (
 	"mini-instagram/internal/controller/restapi/v1/request"
 	"mini-instagram/internal/entity"
 	"mini-instagram/internal/repo"
+	"mini-instagram/internal/validation"
 	jwtmanager "mini-instagram/pkg/jwt"
 	"mini-instagram/pkg/logger"
 )
@@ -47,6 +48,11 @@ func (u *UseCase) CheckSignUpAvailability(ctx context.Context, email, username s
 
 func (u *UseCase) Login(ctx context.Context, input request.Login) (string, error) {
 	email := strings.TrimSpace(strings.ToLower(input.Email))
+	input.Email = email
+
+	if err := validation.Login(input); err != nil {
+		return "", err
+	}
 
 	user, err := u.users.FindByEmail(ctx, email)
 	if errors.Is(err, entity.ErrNotFound) {
@@ -81,6 +87,10 @@ func (u *UseCase) SignUp(ctx context.Context, input request.SignUp) (string, err
 	input.FullName = strings.TrimSpace(input.FullName)
 	input.Username = strings.TrimSpace(strings.ToLower(input.Username))
 	input.Bio = strings.TrimSpace(input.Bio)
+
+	if err := validation.SignUp(input); err != nil {
+		return "", err
+	}
 
 	if err := u.CheckSignUpAvailability(ctx, input.Email, input.Username); err != nil {
 		return "", err

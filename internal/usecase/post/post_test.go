@@ -31,6 +31,14 @@ func (f *fakePostRepo) Create(ctx context.Context, post entity.Post) (entity.Pos
 	return f.created, nil
 }
 
+func (f *fakePostRepo) CountByUser(ctx context.Context, userID int64) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakePostRepo) ListByUser(ctx context.Context, userID int64, limit, offset int) ([]entity.Post, error) {
+	return nil, nil
+}
+
 func newTestStorage(t *testing.T) *storage.Storage {
 	t.Helper()
 	dir := t.TempDir()

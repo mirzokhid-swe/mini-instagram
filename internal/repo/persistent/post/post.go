@@ -56,3 +56,42 @@ func (r *PostRepo) Create(ctx context.Context, post entity.Post) (entity.Post, e
 
 	return entity.Post{}, fmt.Errorf("create post: %w", err)
 }
+
+func (r *PostRepo) CountByUser(ctx context.Context, userID int64) (int64, error) {
+	const query = `SELECT COUNT(*) FROM posts WHERE user_id = $1 AND deleted_at IS NULL`
+
+	var count int64
+	if err := r.pool.Pool.QueryRow(ctx, query, userID).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count posts by user: %w", err)
+	}
+	return count, nil
+}
+
+func (r *PostRepo) ListByUser(ctx context.Context, userID int64, limit, offset int) ([]entity.Post, error) {
+	const query = `
+		SELECT id, thumbnail_path, caption, created_at
+		FROM posts
+		WHERE user_id = $1 AND deleted_at IS NULL
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3`
+
+	rows, err := r.pool.Pool.Query(ctx, query, userID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list posts by user: %w", err)
+	}
+	defer rows.Close()
+
+	var posts []entity.Post
+	for rows.Next() {
+		var p entity.Post
+		if err := rows.Scan(&p.ID, &p.ThumbnailPath, &p.Caption, &p.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan post row: %w", err)
+		}
+		posts = append(posts, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate post rows: %w", err)
+	}
+
+	return posts, nil
+}
