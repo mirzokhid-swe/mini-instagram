@@ -12,10 +12,12 @@ import (
 
 	"mini-instagram/config"
 	"mini-instagram/internal/controller/restapi"
+	commentrepo "mini-instagram/internal/repo/persistent/comment"
 	postrepo "mini-instagram/internal/repo/persistent/post"
 	userrepo "mini-instagram/internal/repo/persistent/user"
 	"mini-instagram/internal/usecase"
 	authusecase "mini-instagram/internal/usecase/auth"
+	commentusecase "mini-instagram/internal/usecase/comment"
 	postusecase "mini-instagram/internal/usecase/post"
 	userusecase "mini-instagram/internal/usecase/user"
 	"mini-instagram/pkg/httpserver"
@@ -27,9 +29,10 @@ import (
 )
 
 type useCases struct {
-	auth  usecase.Auth
-	posts usecase.Post
-	users usecase.User
+	auth     usecase.Auth
+	posts    usecase.Post
+	comments usecase.Comment
+	users    usecase.User
 }
 
 type servers struct {
@@ -39,10 +42,12 @@ type servers struct {
 func initUseCases(pg *postgres.Postgres, cfg *config.Config, l logger.Interface, st *storage.Storage) useCases {
 	userRepo := userrepo.NewUserRepo(pg)
 	postRepo := postrepo.NewPostRepo(pg)
+	commentRepo := commentrepo.NewCommentRepo(pg)
 	return useCases{
-		auth:  authusecase.New(userRepo, jwtmanager.New(cfg.JWT.Secret), l),
-		posts: postusecase.New(postRepo, st, l),
-		users: userusecase.New(userRepo, postRepo, st, l),
+		auth:     authusecase.New(userRepo, jwtmanager.New(cfg.JWT.Secret), l),
+		posts:    postusecase.New(postRepo, st, l),
+		comments: commentusecase.New(commentRepo),
+		users:    userusecase.New(userRepo, postRepo, st, l),
 	}
 }
 
@@ -50,7 +55,7 @@ func initServers(cfg *config.Config, uc useCases, l logger.Interface, st *storag
 	gin.SetMode(gin.ReleaseMode)
 	handler := gin.New()
 
-	restapi.NewRouter(handler, uc.auth, uc.posts, uc.users, tokens, l, st, redisClient)
+	restapi.NewRouter(handler, uc.auth, uc.posts, uc.comments, uc.users, tokens, l, st, redisClient)
 
 	httpServer := httpserver.New(handler, httpserver.Port(cfg.HTTP.Port))
 

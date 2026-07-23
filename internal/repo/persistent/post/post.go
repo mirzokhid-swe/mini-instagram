@@ -146,6 +146,62 @@ func (r *PostRepo) Unlike(ctx context.Context, userID, postID int64) error {
 	})
 }
 
+func (r *PostRepo) GetByID(ctx context.Context, postID int64) (entity.PostDetail, error) {
+	const query = `
+		SELECT p.id, p.user_id, u.username, p.caption, p.image_path, p.like_count, p.comment_count, p.created_at
+		FROM posts p
+		JOIN users u ON u.id = p.user_id
+		WHERE p.id = $1 AND p.deleted_at IS NULL`
+
+	var p entity.PostDetail
+	err := r.pool.Pool.QueryRow(ctx, query, postID).Scan(
+		&p.ID, &p.UserID, &p.Username, &p.Caption, &p.ImagePath, &p.LikeCount, &p.CommentCount, &p.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return entity.PostDetail{}, entity.ErrPostNotFound
+	}
+	if err != nil {
+		return entity.PostDetail{}, fmt.Errorf("get post by id: %w", err)
+	}
+	return p, nil
+}
+
+func (r *PostRepo) IsLiked(ctx context.Context, userID, postID int64) (bool, error) {
+	const query = `SELECT EXISTS(SELECT 1 FROM likes WHERE user_id = $1 AND post_id = $2)`
+
+	var liked bool
+	if err := r.pool.Pool.QueryRow(ctx, query, userID, postID).Scan(&liked); err != nil {
+		return false, fmt.Errorf("check is liked: %w", err)
+	}
+	return liked, nil
+}
+
+func (r *PostRepo) GetForDelete(ctx context.Context, postID int64) (entity.Post, error) {
+	const query = `
+		SELECT id, user_id, image_path, thumbnail_path
+		FROM posts
+		WHERE id = $1 AND deleted_at IS NULL`
+
+	var p entity.Post
+	err := r.pool.Pool.QueryRow(ctx, query, postID).Scan(&p.ID, &p.UserID, &p.ImagePath, &p.ThumbnailPath)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return entity.Post{}, entity.ErrPostNotFound
+	}
+	if err != nil {
+		return entity.Post{}, fmt.Errorf("get post for delete: %w", err)
+	}
+	return p, nil
+}
+
+func (r *PostRepo) SoftDelete(ctx context.Context, postID int64) error {
+	const query = `UPDATE posts SET deleted_at = now(), updated_at = now() WHERE id = $1`
+
+	if _, err := r.pool.Pool.Exec(ctx, query, postID); err != nil {
+		return fmt.Errorf("soft delete post: %w", err)
+	}
+	return nil
+}
+
 func (r *PostRepo) CountFeed(ctx context.Context, callerID int64) (int64, error) {
 	const query = `
 		SELECT COUNT(*)

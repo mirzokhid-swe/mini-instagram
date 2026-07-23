@@ -33,6 +33,10 @@ func (h *V1) handleUsecaseError(c *gin.Context, err error, logMsg string, logFie
 		h.handleError(c, apihttp.Unauthorized, "invalid email or password")
 	case errors.Is(err, entity.ErrNotLiked):
 		h.handleError(c, apihttp.Conflict, "post is not liked")
+	case errors.Is(err, entity.ErrCommentNotFound):
+		h.handleError(c, apihttp.NOT_FOUND, "comment not found")
+	case errors.Is(err, entity.ErrForbidden):
+		h.handleError(c, apihttp.Forbidden, "forbidden")
 	default:
 		h.logger.Error(logMsg, append(logFields, "error", err)...)
 		h.handleError(c, apihttp.InternalServerError, "internal server error")

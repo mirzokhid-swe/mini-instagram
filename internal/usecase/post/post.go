@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	"github.com/microcosm-cc/bluemonday"
 
@@ -175,6 +176,54 @@ func (u *UseCase) Like(ctx context.Context, callerID, postID int64) error {
 func (u *UseCase) Unlike(ctx context.Context, callerID, postID int64) error {
 	if err := u.posts.Unlike(ctx, callerID, postID); err != nil {
 		return fmt.Errorf("unlike post: %w", err)
+	}
+	return nil
+}
+
+func (u *UseCase) GetByID(ctx context.Context, callerID, postID int64) (response.PostDetail, error) {
+	post, err := u.posts.GetByID(ctx, postID)
+	if err != nil {
+		return response.PostDetail{}, fmt.Errorf("get post: %w", err)
+	}
+
+	isLiked, err := u.posts.IsLiked(ctx, callerID, postID)
+	if err != nil {
+		return response.PostDetail{}, fmt.Errorf("check is liked: %w", err)
+	}
+
+	return response.PostDetail{
+		PostID:        post.ID,
+		UserID:        post.UserID,
+		Username:      post.Username,
+		Caption:       post.Caption,
+		ImagePath:     post.ImagePath,
+		LikesCount:    post.LikeCount,
+		CommentsCount: post.CommentCount,
+		CreatedAt:     post.CreatedAt,
+		IsLiked:       isLiked,
+	}, nil
+}
+
+func (u *UseCase) Delete(ctx context.Context, callerID, postID int64) error {
+	post, err := u.posts.GetForDelete(ctx, postID)
+	if err != nil {
+		return fmt.Errorf("get post for delete: %w", err)
+	}
+	if post.UserID != callerID {
+		return entity.ErrForbidden
+	}
+
+	if err := u.posts.SoftDelete(ctx, postID); err != nil {
+		return fmt.Errorf("soft delete post: %w", err)
+	}
+
+	if err := u.st.Delete(post.ImagePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		u.logger.Error("failed to delete post image", "path", post.ImagePath, "error", err)
+	}
+	if post.ThumbnailPath != "" {
+		if err := u.st.Delete(post.ThumbnailPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			u.logger.Error("failed to delete post thumbnail", "path", post.ThumbnailPath, "error", err)
+		}
 	}
 	return nil
 }

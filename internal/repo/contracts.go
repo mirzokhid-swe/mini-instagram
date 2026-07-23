@@ -25,4 +25,16 @@ type Post interface {
 	ListFeed(ctx context.Context, callerID int64, limit, offset int) ([]entity.FeedPost, error)
 	Like(ctx context.Context, userID, postID int64) error
 	Unlike(ctx context.Context, userID, postID int64) error
+	GetByID(ctx context.Context, postID int64) (entity.PostDetail, error)
+	IsLiked(ctx context.Context, userID, postID int64) (bool, error)
+	GetForDelete(ctx context.Context, postID int64) (entity.Post, error)
+	SoftDelete(ctx context.Context, postID int64) error
+}
+
+type Comment interface {
+	Create(ctx context.Context, comment entity.Comment) error
+	Count(ctx context.Context, postID int64) (int64, error)
+	List(ctx context.Context, postID int64, limit, offset int) ([]entity.Comment, error)
+	GetForDelete(ctx context.Context, commentID int64) (entity.CommentOwnership, error)
+	SoftDelete(ctx context.Context, commentID, postID int64) error
 }

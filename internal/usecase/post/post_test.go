@@ -32,6 +32,15 @@ type fakePostRepo struct {
 	likeErr, unlikeErr                 error
 	lastLikeUserID, lastLikePostID     int64
 	lastUnlikeUserID, lastUnlikePostID int64
+
+	getByIDPost   entity.PostDetail
+	getByIDErr    error
+	isLiked       bool
+	isLikedErr    error
+	getForDeleteP entity.Post
+	getForDelErr  error
+	softDeleteErr error
+	lastSoftDelID int64
 }
 
 func (f *fakePostRepo) Create(ctx context.Context, post entity.Post) (entity.Post, error) {
@@ -75,6 +84,23 @@ func (f *fakePostRepo) Like(ctx context.Context, userID, postID int64) error {
 func (f *fakePostRepo) Unlike(ctx context.Context, userID, postID int64) error {
 	f.lastUnlikeUserID, f.lastUnlikePostID = userID, postID
 	return f.unlikeErr
+}
+
+func (f *fakePostRepo) GetByID(ctx context.Context, postID int64) (entity.PostDetail, error) {
+	return f.getByIDPost, f.getByIDErr
+}
+
+func (f *fakePostRepo) IsLiked(ctx context.Context, userID, postID int64) (bool, error) {
+	return f.isLiked, f.isLikedErr
+}
+
+func (f *fakePostRepo) GetForDelete(ctx context.Context, postID int64) (entity.Post, error) {
+	return f.getForDeleteP, f.getForDelErr
+}
+
+func (f *fakePostRepo) SoftDelete(ctx context.Context, postID int64) error {
+	f.lastSoftDelID = postID
+	return f.softDeleteErr
 }
 
 func newTestStorage(t *testing.T) *storage.Storage {
@@ -352,5 +378,81 @@ func TestUnlike_NotLiked(t *testing.T) {
 	err := uc.Unlike(context.Background(), 1, 2)
 	if !errors.Is(err, entity.ErrNotLiked) {
 		t.Fatalf("expected ErrNotLiked, got %v", err)
+	}
+}
+
+func TestGetByID_Success(t *testing.T) {
+	now := time.Now()
+	repo := &fakePostRepo{
+		getByIDPost: entity.PostDetail{ID: 2, UserID: 5, Username: "bob", Caption: "hi", ImagePath: "posts/b.jpg", LikeCount: 3, CommentCount: 1, CreatedAt: now},
+		isLiked:     true,
+	}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	post, err := uc.GetByID(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if post.PostID != 2 || post.Username != "bob" || !post.IsLiked {
+		t.Fatalf("unexpected post detail: %+v", post)
+	}
+}
+
+func TestGetByID_NotFound(t *testing.T) {
+	repo := &fakePostRepo{getByIDErr: entity.ErrPostNotFound}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	_, err := uc.GetByID(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrPostNotFound) {
+		t.Fatalf("expected ErrPostNotFound, got %v", err)
+	}
+}
+
+func TestDelete_Success(t *testing.T) {
+	st := newTestStorage(t)
+	if _, err := st.Save("posts/img.jpg", strings.NewReader("img")); err != nil {
+		t.Fatalf("seed image: %v", err)
+	}
+	if _, err := st.Save("thumbnails/thumb.jpg", strings.NewReader("thumb")); err != nil {
+		t.Fatalf("seed thumbnail: %v", err)
+	}
+
+	repo := &fakePostRepo{getForDeleteP: entity.Post{ID: 2, UserID: 1, ImagePath: "posts/img.jpg", ThumbnailPath: "thumbnails/thumb.jpg"}}
+	uc := New(repo, st, nopLogger{})
+
+	if err := uc.Delete(context.Background(), 1, 2); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.lastSoftDelID != 2 {
+		t.Fatalf("expected post 2 soft-deleted, got %d", repo.lastSoftDelID)
+	}
+	if _, err := os.Stat(st.FullPath("posts/img.jpg")); !os.IsNotExist(err) {
+		t.Fatalf("expected image file to be removed, stat err: %v", err)
+	}
+	if _, err := os.Stat(st.FullPath("thumbnails/thumb.jpg")); !os.IsNotExist(err) {
+		t.Fatalf("expected thumbnail file to be removed, stat err: %v", err)
+	}
+}
+
+func TestDelete_NotOwner(t *testing.T) {
+	repo := &fakePostRepo{getForDeleteP: entity.Post{ID: 2, UserID: 99, ImagePath: "posts/img.jpg"}}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	err := uc.Delete(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+	if repo.lastSoftDelID != 0 {
+		t.Fatal("expected soft delete not to be called")
+	}
+}
+
+func TestDelete_NotFound(t *testing.T) {
+	repo := &fakePostRepo{getForDelErr: entity.ErrPostNotFound}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	err := uc.Delete(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrPostNotFound) {
+		t.Fatalf("expected ErrPostNotFound, got %v", err)
 	}
 }
