@@ -21,4 +21,5 @@ type Post interface {
 type User interface {
 	GetProfile(ctx context.Context, userID, callerID int64) (response.Profile, error)
 	GetUserPosts(ctx context.Context, userID int64, page, perPage int) (response.UserPosts, error)
+	UpdateProfile(ctx context.Context, input request.UpdateProfile) error
 }

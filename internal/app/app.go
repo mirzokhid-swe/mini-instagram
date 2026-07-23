@@ -42,7 +42,7 @@ func initUseCases(pg *postgres.Postgres, cfg *config.Config, l logger.Interface,
 	return useCases{
 		auth:  authusecase.New(userRepo, jwtmanager.New(cfg.JWT.Secret), l),
 		posts: postusecase.New(postRepo, st, l),
-		users: userusecase.New(userRepo, postRepo),
+		users: userusecase.New(userRepo, postRepo, st, l),
 	}
 }
 
