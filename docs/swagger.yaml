@@ -1,0 +1,1077 @@
+basePath: /api/v1
+definitions:
+  http.Response:
+    properties:
+      data: {}
+      description:
+        type: string
+      status:
+        type: string
+    type: object
+  request.Login:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    type: object
+  response.CommentItem:
+    properties:
+      comment_id:
+        type: integer
+      content:
+        type: string
+      created_at:
+        type: string
+      post_id:
+        type: integer
+      user_id:
+        type: integer
+      username:
+        type: string
+    type: object
+  response.CommentList:
+    properties:
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/response.CommentItem'
+        type: array
+    type: object
+  response.Feed:
+    properties:
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/response.FeedItem'
+        type: array
+    type: object
+  response.FeedItem:
+    properties:
+      caption:
+        type: string
+      comments_count:
+        type: integer
+      created_at:
+        type: string
+      image_path:
+        type: string
+      likes_count:
+        type: integer
+      post_id:
+        type: integer
+      user_id:
+        type: integer
+      username:
+        type: string
+    type: object
+  response.HashtagPostItem:
+    properties:
+      caption:
+        type: string
+      comments_count:
+        type: integer
+      created_at:
+        type: string
+      likes_count:
+        type: integer
+      post_id:
+        type: integer
+      thumbnail_path:
+        type: string
+      user_id:
+        type: integer
+      username:
+        type: string
+    type: object
+  response.HashtagPostList:
+    properties:
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/response.HashtagPostItem'
+        type: array
+    type: object
+  response.NotificationItem:
+    properties:
+      action_type:
+        type: string
+      actor_id:
+        type: integer
+      actor_username:
+        type: string
+      created_at:
+        type: string
+      is_read:
+        type: boolean
+      notification_id:
+        type: integer
+      post_id:
+        type: integer
+    type: object
+  response.NotificationList:
+    properties:
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/response.NotificationItem'
+        type: array
+    type: object
+  response.PostDetail:
+    properties:
+      caption:
+        type: string
+      comments_count:
+        type: integer
+      created_at:
+        type: string
+      image_path:
+        type: string
+      is_liked:
+        type: boolean
+      likes_count:
+        type: integer
+      post_id:
+        type: integer
+      user_id:
+        type: integer
+      username:
+        type: string
+    type: object
+  response.PostItem:
+    properties:
+      caption:
+        type: string
+      created_at:
+        type: string
+      post_id:
+        type: integer
+      thumbnail_path:
+        type: string
+    type: object
+  response.Profile:
+    properties:
+      avatar_path:
+        type: string
+      bio:
+        type: string
+      followers_count:
+        type: integer
+      following_count:
+        type: integer
+      full_name:
+        type: string
+      is_following:
+        type: boolean
+      posts_count:
+        type: integer
+      user_id:
+        type: integer
+      username:
+        type: string
+    type: object
+  response.UserPosts:
+    properties:
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/response.PostItem'
+        type: array
+    type: object
+  response.UserSearch:
+    properties:
+      count:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/response.UserSearchItem'
+        type: array
+    type: object
+  response.UserSearchItem:
+    properties:
+      avatar_path:
+        type: string
+      full_name:
+        type: string
+      user_id:
+        type: integer
+      username:
+        type: string
+    type: object
+  v1.createCommentRequest:
+    properties:
+      content:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: 'REST API for a minimal Instagram-like service: auth, profiles, posts,
+    feed, likes, comments, follows, notifications, search and hashtags.'
+  title: Mini Instagram API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates a user by email/password and returns a JWT access
+        token. Rate-limited to 5 requests/minute per email.
+      parameters:
+      - description: Login credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/request.Login'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.Response'
+            - properties:
+                data:
+                  properties:
+                    access_token:
+                      type: string
+                  type: object
+              type: object
+        "400":
+          description: validation error
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: invalid email or password
+          schema:
+            $ref: '#/definitions/http.Response'
+        "429":
+          description: too many attempts
+          schema:
+            $ref: '#/definitions/http.Response'
+      summary: Log in
+      tags:
+      - auth
+  /auth/logout:
+    post:
+      description: Verifies the access token; the client is expected to discard it
+        afterwards (stateless JWT, no server-side blacklist).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: missing or invalid token
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Log out
+      tags:
+      - auth
+  /auth/sign-up:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Creates a new user account and returns a JWT access token. Rate-limited
+        to 5 requests/minute per email.
+      parameters:
+      - description: Email address
+        in: formData
+        name: email
+        required: true
+        type: string
+      - description: Full name
+        in: formData
+        name: full_name
+        required: true
+        type: string
+      - description: Username (lowercase, 3-32 chars, [a-z0-9_.])
+        in: formData
+        name: username
+        required: true
+        type: string
+      - description: Password (min 8 chars)
+        in: formData
+        name: password
+        required: true
+        type: string
+      - description: Short bio
+        in: formData
+        name: bio
+        type: string
+      - description: Avatar image (jpeg/png/webp)
+        in: formData
+        name: avatar
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.Response'
+            - properties:
+                data:
+                  properties:
+                    access_token:
+                      type: string
+                  type: object
+              type: object
+        "400":
+          description: validation error
+          schema:
+            $ref: '#/definitions/http.Response'
+        "409":
+          description: email or username already taken
+          schema:
+            $ref: '#/definitions/http.Response'
+        "429":
+          description: too many attempts
+          schema:
+            $ref: '#/definitions/http.Response'
+      summary: Sign up
+      tags:
+      - auth
+  /comments/{comment_id}:
+    delete:
+      description: Soft-deletes a comment. Allowed for the comment author or the post
+        owner.
+      parameters:
+      - description: Comment ID
+        in: path
+        name: comment_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.Response'
+        "400":
+          description: invalid comment_id
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "403":
+          description: not the comment author or post owner
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: comment not found
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Delete a comment
+      tags:
+      - comments
+  /feed:
+    get:
+      description: Posts authored by users the caller follows (not the caller's own
+        posts), newest first.
+      parameters:
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Items per page (default 10, max 100)
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.Feed'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Home feed
+      tags:
+      - posts
+  /notifications:
+    get:
+      description: Paginated list of the caller's notifications (likes, comments,
+        follows), newest first.
+      parameters:
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Items per page (default 10, max 100)
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.NotificationList'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: List notifications
+      tags:
+      - notifications
+  /notifications/{notification_id}/read:
+    put:
+      description: Idempotent; a notification that isn't the caller's own returns
+        404 (not 403) to avoid leaking existence.
+      parameters:
+      - description: Notification ID
+        in: path
+        name: notification_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.Response'
+        "400":
+          description: invalid notification_id
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: notification not found
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Mark a notification as read
+      tags:
+      - notifications
+  /post:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Uploads an image (max 10 MB, jpeg/png/webp), generates a thumbnail,
+        and parses hashtags from the caption.
+      parameters:
+      - description: Post image (jpeg/png/webp, max 10MB)
+        in: formData
+        name: image
+        required: true
+        type: file
+      - description: 'Caption (max 2048 chars, may include #hashtags)'
+        in: formData
+        name: caption
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.Response'
+        "400":
+          description: missing/invalid image or caption too long
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Create a post
+      tags:
+      - posts
+  /post/{post_id}:
+    delete:
+      description: Soft-deletes the post and removes its image/thumbnail files. Only
+        the post owner may delete it.
+      parameters:
+      - description: Post ID
+        in: path
+        name: post_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.Response'
+        "400":
+          description: invalid post_id
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "403":
+          description: not the post owner
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: post not found
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Delete a post
+      tags:
+      - posts
+    get:
+      description: Returns post details including like/comment counts and whether
+        the caller has liked it.
+      parameters:
+      - description: Post ID
+        in: path
+        name: post_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.PostDetail'
+              type: object
+        "400":
+          description: invalid post_id
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: post not found
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Get a single post
+      tags:
+      - posts
+  /post/{post_id}/comments:
+    get:
+      description: Paginated list of a post's comments, oldest first, excluding soft-deleted
+        comments.
+      parameters:
+      - description: Post ID
+        in: path
+        name: post_id
+        required: true
+        type: integer
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Items per page (default 10, max 100)
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.CommentList'
+              type: object
+        "400":
+          description: invalid post_id
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: post not found
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: List comments on a post
+      tags:
+      - comments
+    post:
+      consumes:
+      - application/json
+      description: Adds a comment (1-2048 chars after trimming) to a post.
+      parameters:
+      - description: Post ID
+        in: path
+        name: post_id
+        required: true
+        type: integer
+      - description: Comment content
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/v1.createCommentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.Response'
+        "400":
+          description: invalid post_id or empty content
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: post not found
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Comment on a post
+      tags:
+      - comments
+  /post/{post_id}/like:
+    delete:
+      description: Removes a like. Returns 409 if the caller hadn't liked the post.
+      parameters:
+      - description: Post ID
+        in: path
+        name: post_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.Response'
+        "400":
+          description: invalid post_id
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: post not found
+          schema:
+            $ref: '#/definitions/http.Response'
+        "409":
+          description: post is not liked
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Unlike a post
+      tags:
+      - posts
+    post:
+      description: 'Idempotent: liking an already-liked post returns 200 without changing
+        the like count.'
+      parameters:
+      - description: Post ID
+        in: path
+        name: post_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.Response'
+        "400":
+          description: invalid post_id
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: post not found
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Like a post
+      tags:
+      - posts
+  /profile:
+    get:
+      description: Returns the authenticated caller's profile.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.Profile'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Get own profile
+      tags:
+      - profile
+    put:
+      consumes:
+      - multipart/form-data
+      description: Updates the caller's username, full name, bio, and optionally the
+        avatar (max 5 MB, jpeg/png/webp).
+      parameters:
+      - description: Username
+        in: formData
+        name: username
+        required: true
+        type: string
+      - description: Full name
+        in: formData
+        name: full_name
+        required: true
+        type: string
+      - description: Bio
+        in: formData
+        name: bio
+        type: string
+      - description: New avatar image (jpeg/png/webp, max 5MB)
+        in: formData
+        name: avatar
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.Response'
+        "400":
+          description: validation error or avatar too large
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "409":
+          description: username already taken
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Edit own profile
+      tags:
+      - profile
+  /search/posts:
+    get:
+      description: 'Returns posts tagged with the given hashtag (leading # is optional),
+        newest first. Unknown tags return an empty list.'
+      parameters:
+      - description: 'Hashtag name, with or without leading #'
+        in: query
+        name: tag
+        required: true
+        type: string
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Items per page (default 10, max 100)
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.HashtagPostList'
+              type: object
+        "400":
+          description: missing tag
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Search posts by hashtag
+      tags:
+      - search
+  /search/users:
+    get:
+      description: Case-insensitive substring search on username, exact/prefix matches
+        ranked first.
+      parameters:
+      - description: Search term (1-32 chars)
+        in: query
+        name: q
+        required: true
+        type: string
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Items per page (default 10, max 100)
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.UserSearch'
+              type: object
+        "400":
+          description: missing or invalid q
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Search users
+      tags:
+      - search
+  /users/{user_id}:
+    get:
+      description: Returns the given user's profile, including whether the caller
+        follows them.
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.Profile'
+              type: object
+        "400":
+          description: invalid user_id
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: user not found
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Get a user's profile
+      tags:
+      - profile
+  /users/{user_id}/follow:
+    delete:
+      description: Removes an existing follow relationship.
+      parameters:
+      - description: User ID to unfollow
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.Response'
+        "400":
+          description: invalid user_id
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: user not found
+          schema:
+            $ref: '#/definitions/http.Response'
+        "409":
+          description: not following
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Unfollow a user
+      tags:
+      - follow
+    post:
+      description: Follows the given user. Following yourself, a missing/inactive
+        user, or an already-followed user are rejected.
+      parameters:
+      - description: User ID to follow
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.Response'
+        "400":
+          description: cannot follow yourself
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: user not found
+          schema:
+            $ref: '#/definitions/http.Response'
+        "409":
+          description: already following
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Follow a user
+      tags:
+      - follow
+  /users/{user_id}/posts:
+    get:
+      description: Paginated list of a user's posts, newest first, excluding soft-deleted
+        posts.
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Items per page (default 10, max 100)
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.UserPosts'
+              type: object
+        "400":
+          description: invalid user_id
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: List a user's posts
+      tags:
+      - profile
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and the JWT access token, e.g.
+      "Bearer eyJhbGciOi...".
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
