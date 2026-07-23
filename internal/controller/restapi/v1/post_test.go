@@ -63,6 +63,10 @@ func (f *fakePostUseCase) Delete(ctx context.Context, callerID, postID int64) er
 	return f.deleteErr
 }
 
+func (f *fakePostUseCase) SearchByTag(ctx context.Context, tag string, page, perPage int) (response.HashtagPostList, error) {
+	return response.HashtagPostList{}, nil
+}
+
 func newTestPostHandler(uc *fakePostUseCase) (*gin.Engine, *storage.Storage) {
 	gin.SetMode(gin.TestMode)
 	handler := gin.New()

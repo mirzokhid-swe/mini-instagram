@@ -3,6 +3,7 @@ package post
 import (
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"image/jpeg"
 	"io"
@@ -19,8 +20,9 @@ import (
 )
 
 type fakePostRepo struct {
-	created entity.Post
-	err     error
+	created         entity.Post
+	createdHashtags []string
+	err             error
 
 	feedCount int64
 	feedPosts []entity.FeedPost
@@ -43,12 +45,13 @@ type fakePostRepo struct {
 	lastSoftDelID int64
 }
 
-func (f *fakePostRepo) Create(ctx context.Context, post entity.Post) (entity.Post, error) {
+func (f *fakePostRepo) Create(ctx context.Context, post entity.Post, hashtags []string) (entity.Post, error) {
 	if f.err != nil {
 		return entity.Post{}, f.err
 	}
 	f.created = post
 	f.created.ID = 1
+	f.createdHashtags = hashtags
 	return f.created, nil
 }
 
@@ -103,6 +106,20 @@ func (f *fakePostRepo) SoftDelete(ctx context.Context, postID int64) error {
 	return f.softDeleteErr
 }
 
+type fakeHashtagRepo struct {
+	count int64
+	posts []entity.HashtagPost
+	err   error
+}
+
+func (f *fakeHashtagRepo) CountByTag(ctx context.Context, tag string) (int64, error) {
+	return f.count, f.err
+}
+
+func (f *fakeHashtagRepo) ListByTag(ctx context.Context, tag string, limit, offset int) ([]entity.HashtagPost, error) {
+	return f.posts, f.err
+}
+
 func newTestStorage(t *testing.T) *storage.Storage {
 	t.Helper()
 	dir := t.TempDir()
@@ -147,7 +164,7 @@ func (nopLogger) Error(string, ...any) {}
 func TestCreatePost_Success(t *testing.T) {
 	repo := &fakePostRepo{}
 	st := newTestStorage(t)
-	uc := New(repo, st, nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, st, nopLogger{})
 
 	file, header := mustOpenTestImage(t)
 	defer file.Close()
@@ -191,7 +208,7 @@ func (fakeFile) Close() error                            { return nil }
 func TestCreatePost_InvalidImage(t *testing.T) {
 	repo := &fakePostRepo{}
 	st := newTestStorage(t)
-	uc := New(repo, st, nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, st, nopLogger{})
 
 	file := fakeFile{ReadSeeker: strings.NewReader("not an image")}
 	header := &multipart.FileHeader{
@@ -209,7 +226,7 @@ func TestCreatePost_InvalidImage(t *testing.T) {
 func TestCreatePost_CaptionSanitizesHTML(t *testing.T) {
 	repo := &fakePostRepo{}
 	st := newTestStorage(t)
-	uc := New(repo, st, nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, st, nopLogger{})
 
 	file, header := mustOpenTestImage(t)
 	defer file.Close()
@@ -230,7 +247,7 @@ func TestCreatePost_CaptionSanitizesHTML(t *testing.T) {
 func TestCreatePost_CaptionTooLong(t *testing.T) {
 	repo := &fakePostRepo{}
 	st := newTestStorage(t)
-	uc := New(repo, st, nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, st, nopLogger{})
 
 	file, header := mustOpenTestImage(t)
 	defer file.Close()
@@ -244,7 +261,7 @@ func TestCreatePost_CaptionTooLong(t *testing.T) {
 func TestCreatePost_CleanupOnRepoFailure(t *testing.T) {
 	repo := &fakePostRepo{err: errors.New("db failure")}
 	st := newTestStorage(t)
-	uc := New(repo, st, nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, st, nopLogger{})
 
 	file, header := mustOpenTestImage(t)
 	defer file.Close()
@@ -272,7 +289,7 @@ func TestGetFeed_Success(t *testing.T) {
 			{ID: 1, UserID: 5, Username: "bob", Caption: "hello", ImagePath: "posts/a.jpg", CreatedAt: now.Add(-time.Hour)},
 		},
 	}
-	uc := New(repo, newTestStorage(t), nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
 
 	feed, err := uc.GetFeed(context.Background(), 1, 1, 10)
 	if err != nil {
@@ -294,7 +311,7 @@ func TestGetFeed_Success(t *testing.T) {
 
 func TestGetFeed_EmptyWhenFollowingNobody(t *testing.T) {
 	repo := &fakePostRepo{}
-	uc := New(repo, newTestStorage(t), nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
 
 	feed, err := uc.GetFeed(context.Background(), 1, 1, 10)
 	if err != nil {
@@ -307,7 +324,7 @@ func TestGetFeed_EmptyWhenFollowingNobody(t *testing.T) {
 
 func TestGetFeed_PaginationClamping(t *testing.T) {
 	repo := &fakePostRepo{}
-	uc := New(repo, newTestStorage(t), nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
 
 	if _, err := uc.GetFeed(context.Background(), 1, 0, 0); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -330,7 +347,7 @@ func TestGetFeed_PaginationClamping(t *testing.T) {
 
 func TestGetFeed_RepoError(t *testing.T) {
 	repo := &fakePostRepo{feedErr: errors.New("db failure")}
-	uc := New(repo, newTestStorage(t), nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
 
 	if _, err := uc.GetFeed(context.Background(), 1, 1, 10); err == nil {
 		t.Fatal("expected error")
@@ -339,7 +356,7 @@ func TestGetFeed_RepoError(t *testing.T) {
 
 func TestLike_Success(t *testing.T) {
 	repo := &fakePostRepo{}
-	uc := New(repo, newTestStorage(t), nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
 
 	if err := uc.Like(context.Background(), 1, 2); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -351,7 +368,7 @@ func TestLike_Success(t *testing.T) {
 
 func TestLike_PostNotFound(t *testing.T) {
 	repo := &fakePostRepo{likeErr: entity.ErrPostNotFound}
-	uc := New(repo, newTestStorage(t), nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
 
 	err := uc.Like(context.Background(), 1, 2)
 	if !errors.Is(err, entity.ErrPostNotFound) {
@@ -361,7 +378,7 @@ func TestLike_PostNotFound(t *testing.T) {
 
 func TestUnlike_Success(t *testing.T) {
 	repo := &fakePostRepo{}
-	uc := New(repo, newTestStorage(t), nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
 
 	if err := uc.Unlike(context.Background(), 1, 2); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -373,7 +390,7 @@ func TestUnlike_Success(t *testing.T) {
 
 func TestUnlike_NotLiked(t *testing.T) {
 	repo := &fakePostRepo{unlikeErr: entity.ErrNotLiked}
-	uc := New(repo, newTestStorage(t), nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
 
 	err := uc.Unlike(context.Background(), 1, 2)
 	if !errors.Is(err, entity.ErrNotLiked) {
@@ -387,7 +404,7 @@ func TestGetByID_Success(t *testing.T) {
 		getByIDPost: entity.PostDetail{ID: 2, UserID: 5, Username: "bob", Caption: "hi", ImagePath: "posts/b.jpg", LikeCount: 3, CommentCount: 1, CreatedAt: now},
 		isLiked:     true,
 	}
-	uc := New(repo, newTestStorage(t), nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
 
 	post, err := uc.GetByID(context.Background(), 1, 2)
 	if err != nil {
@@ -400,7 +417,7 @@ func TestGetByID_Success(t *testing.T) {
 
 func TestGetByID_NotFound(t *testing.T) {
 	repo := &fakePostRepo{getByIDErr: entity.ErrPostNotFound}
-	uc := New(repo, newTestStorage(t), nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
 
 	_, err := uc.GetByID(context.Background(), 1, 2)
 	if !errors.Is(err, entity.ErrPostNotFound) {
@@ -418,7 +435,7 @@ func TestDelete_Success(t *testing.T) {
 	}
 
 	repo := &fakePostRepo{getForDeleteP: entity.Post{ID: 2, UserID: 1, ImagePath: "posts/img.jpg", ThumbnailPath: "thumbnails/thumb.jpg"}}
-	uc := New(repo, st, nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, st, nopLogger{})
 
 	if err := uc.Delete(context.Background(), 1, 2); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -436,7 +453,7 @@ func TestDelete_Success(t *testing.T) {
 
 func TestDelete_NotOwner(t *testing.T) {
 	repo := &fakePostRepo{getForDeleteP: entity.Post{ID: 2, UserID: 99, ImagePath: "posts/img.jpg"}}
-	uc := New(repo, newTestStorage(t), nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
 
 	err := uc.Delete(context.Background(), 1, 2)
 	if !errors.Is(err, entity.ErrForbidden) {
@@ -449,10 +466,92 @@ func TestDelete_NotOwner(t *testing.T) {
 
 func TestDelete_NotFound(t *testing.T) {
 	repo := &fakePostRepo{getForDelErr: entity.ErrPostNotFound}
-	uc := New(repo, newTestStorage(t), nopLogger{})
+	uc := New(repo, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
 
 	err := uc.Delete(context.Background(), 1, 2)
 	if !errors.Is(err, entity.ErrPostNotFound) {
 		t.Fatalf("expected ErrPostNotFound, got %v", err)
+	}
+}
+
+func TestCreatePost_ParsesHashtags(t *testing.T) {
+	repo := &fakePostRepo{}
+	st := newTestStorage(t)
+	uc := New(repo, &fakeHashtagRepo{}, st, nopLogger{})
+
+	file, header := mustOpenTestImage(t)
+	defer file.Close()
+
+	err := uc.Create(context.Background(), request.CreatePost{
+		UserID:  1,
+		Caption: "sunset #Beach #beach #beach_life",
+		File:    file,
+		Header:  header,
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	want := []string{"beach", "beach_life"}
+	if len(repo.createdHashtags) != len(want) {
+		t.Fatalf("expected hashtags %v, got %v", want, repo.createdHashtags)
+	}
+	for i, tag := range want {
+		if repo.createdHashtags[i] != tag {
+			t.Fatalf("expected hashtags %v, got %v", want, repo.createdHashtags)
+		}
+	}
+}
+
+func TestCreatePost_HashtagCapAndLengthLimit(t *testing.T) {
+	var caption strings.Builder
+	for i := range 35 {
+		fmt.Fprintf(&caption, "#tag%d ", i)
+	}
+	caption.WriteString("#" + strings.Repeat("a", 65))
+
+	tags := parseHashtags(caption.String())
+	if len(tags) != MaxHashtags {
+		t.Fatalf("expected %d hashtags, got %d", MaxHashtags, len(tags))
+	}
+	for _, tag := range tags {
+		if len(tag) > MaxHashtagLength {
+			t.Fatalf("expected hashtag %q to be at most %d chars", tag, MaxHashtagLength)
+		}
+	}
+}
+
+func TestSearchByTag_StripsHashAndLowercases(t *testing.T) {
+	repo := &fakeHashtagRepo{count: 1, posts: []entity.HashtagPost{{ID: 1, UserID: 2, Username: "bob", Caption: "hi", ThumbnailPath: "t.jpg"}}}
+	uc := New(&fakePostRepo{}, repo, newTestStorage(t), nopLogger{})
+
+	result, err := uc.SearchByTag(context.Background(), "#Beach", 1, 10)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Count != 1 || len(result.Items) != 1 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestSearchByTag_EmptyTag(t *testing.T) {
+	uc := New(&fakePostRepo{}, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
+
+	_, err := uc.SearchByTag(context.Background(), "   #  ", 1, 10)
+	var vErr *entity.ValidationError
+	if !errors.As(err, &vErr) || vErr.Field != "tag" {
+		t.Fatalf("expected validation error on field tag, got %v", err)
+	}
+}
+
+func TestSearchByTag_UnknownTagReturnsEmpty(t *testing.T) {
+	uc := New(&fakePostRepo{}, &fakeHashtagRepo{}, newTestStorage(t), nopLogger{})
+
+	result, err := uc.SearchByTag(context.Background(), "nonexistent", 1, 10)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Count != 0 || len(result.Items) != 0 {
+		t.Fatalf("expected empty result, got %+v", result)
 	}
 }
