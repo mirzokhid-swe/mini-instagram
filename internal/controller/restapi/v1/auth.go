@@ -91,6 +91,10 @@ func (h *V1) signUp(c *gin.Context) {
 	h.handleResponse(c, apihttp.OK, gin.H{"access_token": accessToken})
 }
 
+func (h *V1) logout(c *gin.Context) {
+	h.handleResponse(c, apihttp.OK, nil)
+}
+
 func (h *V1) saveAvatar(c *gin.Context) (string, error) {
 	file, header, err := c.Request.FormFile("avatar")
 	if errors.Is(err, http.ErrMissingFile) {
