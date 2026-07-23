@@ -30,6 +30,12 @@ type fakeUserRepo struct {
 
 	updated   entity.User
 	updateErr error
+
+	followErr    error
+	unfollowErr  error
+	followedWith struct {
+		followerID, followingID int64
+	}
 }
 
 func (f *fakeUserRepo) EmailExists(ctx context.Context, email string) (bool, error) {
@@ -69,6 +75,16 @@ func (f *fakeUserRepo) GetProfileStats(ctx context.Context, userID int64) (int64
 
 func (f *fakeUserRepo) IsFollowing(ctx context.Context, followerID, followingID int64) (bool, error) {
 	return false, nil
+}
+
+func (f *fakeUserRepo) Follow(ctx context.Context, followerID, followingID int64) error {
+	f.followedWith.followerID = followerID
+	f.followedWith.followingID = followingID
+	return f.followErr
+}
+
+func (f *fakeUserRepo) Unfollow(ctx context.Context, followerID, followingID int64) error {
+	return f.unfollowErr
 }
 
 type fakePostRepo struct{}
@@ -301,5 +317,76 @@ func TestUpdateProfile_CleansUpNewAvatarOnUpdateFailure(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("expected newly saved avatar to be cleaned up, found %d entries", len(entries))
+	}
+}
+
+func TestFollow_SelfFollow(t *testing.T) {
+	users := &fakeUserRepo{byID: entity.User{ID: 1, IsActive: true}}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	err := uc.Follow(context.Background(), 1, 1)
+	if !errors.Is(err, entity.ErrSelfFollow) {
+		t.Fatalf("expected ErrSelfFollow, got %v", err)
+	}
+}
+
+func TestFollow_TargetNotFound(t *testing.T) {
+	users := &fakeUserRepo{byIDErr: entity.ErrNotFound}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	err := uc.Follow(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestFollow_TargetInactive(t *testing.T) {
+	users := &fakeUserRepo{byID: entity.User{ID: 2, IsActive: false}}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	err := uc.Follow(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestFollow_Success(t *testing.T) {
+	users := &fakeUserRepo{byID: entity.User{ID: 2, IsActive: true}}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	if err := uc.Follow(context.Background(), 1, 2); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if users.followedWith.followerID != 1 || users.followedWith.followingID != 2 {
+		t.Fatalf("expected repo Follow called with (1, 2), got %+v", users.followedWith)
+	}
+}
+
+func TestFollow_AlreadyFollowing(t *testing.T) {
+	users := &fakeUserRepo{byID: entity.User{ID: 2, IsActive: true}, followErr: entity.ErrAlreadyFollowing}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	err := uc.Follow(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrAlreadyFollowing) {
+		t.Fatalf("expected ErrAlreadyFollowing, got %v", err)
+	}
+}
+
+func TestUnfollow_NotFollowing(t *testing.T) {
+	users := &fakeUserRepo{byID: entity.User{ID: 2, IsActive: true}, unfollowErr: entity.ErrNotFollowing}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	err := uc.Unfollow(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrNotFollowing) {
+		t.Fatalf("expected ErrNotFollowing, got %v", err)
+	}
+}
+
+func TestUnfollow_Success(t *testing.T) {
+	users := &fakeUserRepo{byID: entity.User{ID: 2, IsActive: true}}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	if err := uc.Unfollow(context.Background(), 1, 2); err != nil {
+		t.Fatalf("expected no error, got %v", err)
 	}
 }

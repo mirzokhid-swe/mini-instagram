@@ -170,3 +170,31 @@ func (u *UseCase) UpdateProfile(ctx context.Context, input request.UpdateProfile
 
 	return nil
 }
+
+func (u *UseCase) Follow(ctx context.Context, followerID, followingID int64) error {
+	if followerID == followingID {
+		return entity.ErrSelfFollow
+	}
+
+	target, err := u.users.FindByID(ctx, followingID)
+	if err != nil {
+		return err
+	}
+	if !target.IsActive {
+		return entity.ErrNotFound
+	}
+
+	return u.users.Follow(ctx, followerID, followingID)
+}
+
+func (u *UseCase) Unfollow(ctx context.Context, followerID, followingID int64) error {
+	target, err := u.users.FindByID(ctx, followingID)
+	if err != nil {
+		return err
+	}
+	if !target.IsActive {
+		return entity.ErrNotFound
+	}
+
+	return u.users.Unfollow(ctx, followerID, followingID)
+}

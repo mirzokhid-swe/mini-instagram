@@ -117,6 +117,48 @@ func (h *V1) editProfile(c *gin.Context) {
 	h.handleResponse(c, apihttp.OK, nil)
 }
 
+func (h *V1) followUser(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	if err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid user_id")
+		return
+	}
+
+	if err := h.users.Follow(c.Request.Context(), callerID, userID); err != nil {
+		h.handleUsecaseError(c, err, "follow user failed", "follower_id", callerID, "following_id", userID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, nil)
+}
+
+func (h *V1) unfollowUser(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	if err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid user_id")
+		return
+	}
+
+	if err := h.users.Unfollow(c.Request.Context(), callerID, userID); err != nil {
+		h.handleUsecaseError(c, err, "unfollow user failed", "follower_id", callerID, "following_id", userID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, nil)
+}
+
 func currentUserID(c *gin.Context) (int64, bool) {
 	v, exists := c.Get("user_id")
 	if !exists {

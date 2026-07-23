@@ -116,6 +116,36 @@ func (r *UserRepo) IsFollowing(ctx context.Context, followerID, followingID int6
 	return exists, nil
 }
 
+func (r *UserRepo) Follow(ctx context.Context, followerID, followingID int64) error {
+	_, err := r.pool.Pool.Exec(ctx,
+		`INSERT INTO follows (follower_id, following_id) VALUES ($1, $2)`,
+		followerID, followingID,
+	)
+	if err == nil {
+		return nil
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return entity.ErrAlreadyFollowing
+	}
+	return fmt.Errorf("follow user: %w", err)
+}
+
+func (r *UserRepo) Unfollow(ctx context.Context, followerID, followingID int64) error {
+	tag, err := r.pool.Pool.Exec(ctx,
+		`DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
+		followerID, followingID,
+	)
+	if err != nil {
+		return fmt.Errorf("unfollow user: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return entity.ErrNotFollowing
+	}
+	return nil
+}
+
 func (r *UserRepo) Update(ctx context.Context, user entity.User) error {
 	const query = `
 		UPDATE users

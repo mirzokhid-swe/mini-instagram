@@ -15,6 +15,8 @@ type User interface {
 	Update(ctx context.Context, user entity.User) error
 	GetProfileStats(ctx context.Context, userID int64) (postsCount, followersCount, followingCount int64, err error)
 	IsFollowing(ctx context.Context, followerID, followingID int64) (bool, error)
+	Follow(ctx context.Context, followerID, followingID int64) error
+	Unfollow(ctx context.Context, followerID, followingID int64) error
 }
 
 type Post interface {
