@@ -106,7 +106,7 @@ func (f *fakeUserRepo) Search(ctx context.Context, likePattern, exactMatch strin
 
 type fakePostRepo struct{}
 
-func (f *fakePostRepo) Create(ctx context.Context, post entity.Post) (entity.Post, error) {
+func (f *fakePostRepo) Create(ctx context.Context, post entity.Post, hashtags []string) (entity.Post, error) {
 	return entity.Post{}, nil
 }
 func (f *fakePostRepo) CountByUser(ctx context.Context, userID int64) (int64, error) { return 0, nil }

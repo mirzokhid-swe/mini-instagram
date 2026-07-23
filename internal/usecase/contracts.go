@@ -21,6 +21,7 @@ type Post interface {
 	Unlike(ctx context.Context, callerID, postID int64) error
 	GetByID(ctx context.Context, callerID, postID int64) (response.PostDetail, error)
 	Delete(ctx context.Context, callerID, postID int64) error
+	SearchByTag(ctx context.Context, tag string, page, perPage int) (response.HashtagPostList, error)
 }
 
 type Comment interface {

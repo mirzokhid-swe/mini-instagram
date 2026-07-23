@@ -89,6 +89,26 @@ func (h *V1) unlikePost(c *gin.Context) {
 	h.handleResponse(c, apihttp.OK, nil)
 }
 
+func (h *V1) searchPostsByTag(c *gin.Context) {
+	_, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	tag := c.Query("tag")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
+
+	results, err := h.posts.SearchByTag(c.Request.Context(), tag, page, perPage)
+	if err != nil {
+		h.handleUsecaseError(c, err, "search posts by tag failed", "tag", tag)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, results)
+}
+
 func (h *V1) getPost(c *gin.Context) {
 	callerID, ok := currentUserID(c)
 	if !ok {

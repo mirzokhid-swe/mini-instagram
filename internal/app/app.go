@@ -13,6 +13,7 @@ import (
 	"mini-instagram/config"
 	"mini-instagram/internal/controller/restapi"
 	commentrepo "mini-instagram/internal/repo/persistent/comment"
+	hashtagrepo "mini-instagram/internal/repo/persistent/hashtag"
 	notificationrepo "mini-instagram/internal/repo/persistent/notification"
 	postrepo "mini-instagram/internal/repo/persistent/post"
 	userrepo "mini-instagram/internal/repo/persistent/user"
@@ -47,9 +48,10 @@ func initUseCases(pg *postgres.Postgres, cfg *config.Config, l logger.Interface,
 	postRepo := postrepo.NewPostRepo(pg)
 	commentRepo := commentrepo.NewCommentRepo(pg)
 	notificationRepo := notificationrepo.NewNotificationRepo(pg)
+	hashtagRepo := hashtagrepo.NewHashtagRepo(pg)
 	return useCases{
 		auth:          authusecase.New(userRepo, jwtmanager.New(cfg.JWT.Secret), l),
-		posts:         postusecase.New(postRepo, st, l),
+		posts:         postusecase.New(postRepo, hashtagRepo, st, l),
 		comments:      commentusecase.New(commentRepo),
 		users:         userusecase.New(userRepo, postRepo, st, l),
 		notifications: notificationusecase.New(notificationRepo),

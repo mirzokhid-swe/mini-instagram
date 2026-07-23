@@ -20,41 +20,62 @@ func NewPostRepo(pg *postgres.Postgres) *PostRepo {
 	return &PostRepo{pool: pg}
 }
 
-func (r *PostRepo) Create(ctx context.Context, post entity.Post) (entity.Post, error) {
-	const query = `
-		INSERT INTO posts (user_id, image_path, thumbnail_path, caption)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, user_id, image_path, thumbnail_path, caption, like_count, comment_count, created_at, updated_at`
+func (r *PostRepo) Create(ctx context.Context, post entity.Post, hashtags []string) (entity.Post, error) {
+	err := r.pool.WithinTx(ctx, func(tx pgx.Tx) error {
+		const query = `
+			INSERT INTO posts (user_id, image_path, thumbnail_path, caption)
+			VALUES ($1, $2, $3, $4)
+			RETURNING id, user_id, image_path, thumbnail_path, caption, like_count, comment_count, created_at, updated_at`
 
-	err := r.pool.Pool.QueryRow(ctx, query,
-		post.UserID,
-		post.ImagePath,
-		post.ThumbnailPath,
-		post.Caption,
-	).Scan(
-		&post.ID,
-		&post.UserID,
-		&post.ImagePath,
-		&post.ThumbnailPath,
-		&post.Caption,
-		&post.LikeCount,
-		&post.CommentCount,
-		&post.CreatedAt,
-		&post.UpdatedAt,
-	)
-	if err == nil {
-		return post, nil
-	}
+		err := tx.QueryRow(ctx, query,
+			post.UserID,
+			post.ImagePath,
+			post.ThumbnailPath,
+			post.Caption,
+		).Scan(
+			&post.ID,
+			&post.UserID,
+			&post.ImagePath,
+			&post.ThumbnailPath,
+			&post.Caption,
+			&post.LikeCount,
+			&post.CommentCount,
+			&post.CreatedAt,
+			&post.UpdatedAt,
+		)
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+				return entity.ErrNotFound
+			}
+			if errors.Is(err, pgx.ErrNoRows) {
+				return entity.ErrNotFound
+			}
+			return fmt.Errorf("insert post: %w", err)
+		}
 
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-		return entity.Post{}, entity.ErrNotFound
-	}
-	if errors.Is(err, pgx.ErrNoRows) {
-		return entity.Post{}, entity.ErrNotFound
-	}
+		for _, name := range hashtags {
+			var hashtagID int64
+			if err := tx.QueryRow(ctx,
+				`INSERT INTO hashtags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+				name,
+			).Scan(&hashtagID); err != nil {
+				return fmt.Errorf("upsert hashtag %q: %w", name, err)
+			}
 
-	return entity.Post{}, fmt.Errorf("create post: %w", err)
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO post_hashtags (post_id, hashtag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+				post.ID, hashtagID,
+			); err != nil {
+				return fmt.Errorf("link hashtag %q: %w", name, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return entity.Post{}, err
+	}
+	return post, nil
 }
 
 func (r *PostRepo) CountByUser(ctx context.Context, userID int64) (int64, error) {

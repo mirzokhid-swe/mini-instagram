@@ -90,6 +90,7 @@ func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, comm
 		search := protected.Group("/search")
 		{
 			search.GET("/users", h.searchUsers)
+			search.GET("/posts", h.searchPostsByTag)
 		}
 	}
 }
