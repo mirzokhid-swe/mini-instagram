@@ -159,6 +159,26 @@ func (h *V1) unfollowUser(c *gin.Context) {
 	h.handleResponse(c, apihttp.OK, nil)
 }
 
+func (h *V1) searchUsers(c *gin.Context) {
+	_, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	query := c.Query("q")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
+
+	results, err := h.users.SearchUsers(c.Request.Context(), query, page, perPage)
+	if err != nil {
+		h.handleUsecaseError(c, err, "search users failed", "query", query)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, results)
+}
+
 func currentUserID(c *gin.Context) (int64, bool) {
 	v, exists := c.Get("user_id")
 	if !exists {

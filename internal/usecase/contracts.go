@@ -35,6 +35,7 @@ type User interface {
 	UpdateProfile(ctx context.Context, input request.UpdateProfile) error
 	Follow(ctx context.Context, followerID, followingID int64) error
 	Unfollow(ctx context.Context, followerID, followingID int64) error
+	SearchUsers(ctx context.Context, query string, page, perPage int) (response.UserSearch, error)
 }
 
 type Notification interface {
