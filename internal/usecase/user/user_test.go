@@ -83,6 +83,16 @@ func (f *fakePostRepo) ListByUser(ctx context.Context, userID int64, limit, offs
 func (f *fakePostRepo) CountFeed(ctx context.Context, callerID int64) (int64, error) { return 0, nil }
 func (f *fakePostRepo) Like(ctx context.Context, userID, postID int64) error         { return nil }
 func (f *fakePostRepo) Unlike(ctx context.Context, userID, postID int64) error       { return nil }
+func (f *fakePostRepo) GetByID(ctx context.Context, postID int64) (entity.PostDetail, error) {
+	return entity.PostDetail{}, nil
+}
+func (f *fakePostRepo) IsLiked(ctx context.Context, userID, postID int64) (bool, error) {
+	return false, nil
+}
+func (f *fakePostRepo) GetForDelete(ctx context.Context, postID int64) (entity.Post, error) {
+	return entity.Post{}, nil
+}
+func (f *fakePostRepo) SoftDelete(ctx context.Context, postID int64) error { return nil }
 func (f *fakePostRepo) ListFeed(ctx context.Context, callerID int64, limit, offset int) ([]entity.FeedPost, error) {
 	return nil, nil
 }

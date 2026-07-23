@@ -15,12 +15,13 @@ import (
 
 // V1 -.
 type V1 struct {
-	auth    usecase.Auth
-	posts   usecase.Post
-	users   usecase.User
-	logger  logger.Interface
-	storage *storage.Storage
-	redis   *redis.Client
+	auth     usecase.Auth
+	posts    usecase.Post
+	comments usecase.Comment
+	users    usecase.User
+	logger   logger.Interface
+	storage  *storage.Storage
+	redis    *redis.Client
 }
 
 func (h *V1) handleResponse(c *gin.Context, status http.Status, data interface{}) {
@@ -40,8 +41,8 @@ func (h *V1) handleError(c *gin.Context, status http.Status, message string) {
 }
 
 // NewRoutes -.
-func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, users usecase.User, tokens *jwtmanager.TokenManager, l logger.Interface, st *storage.Storage, redisClient *redis.Client) {
-	h := &V1{auth: auth, posts: posts, users: users, logger: l, storage: st, redis: redisClient}
+func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, comments usecase.Comment, users usecase.User, tokens *jwtmanager.TokenManager, l logger.Interface, st *storage.Storage, redisClient *redis.Client) {
+	h := &V1{auth: auth, posts: posts, comments: comments, users: users, logger: l, storage: st, redis: redisClient}
 	authRoutes := api.Group("/auth")
 	authRoutes.POST("/sign-up", middleware.RateLimitByEmail(h.redis, "rl:signup:", h.logger), h.signUp)
 	authRoutes.POST("/login", middleware.RateLimitByEmail(h.redis, "rl:login:", h.logger), h.login)
@@ -59,9 +60,15 @@ func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, user
 		postRoutes := protected.Group("/post")
 		{
 			postRoutes.POST("", h.createPost)
+			postRoutes.GET("/:post_id", h.getPost)
+			postRoutes.DELETE("/:post_id", h.deletePost)
 			postRoutes.POST("/:post_id/like", h.likePost)
 			postRoutes.DELETE("/:post_id/like", h.unlikePost)
+			postRoutes.POST("/:post_id/comments", h.createComment)
+			postRoutes.GET("/:post_id/comments", h.listComments)
 		}
+
+		protected.DELETE("/comments/:comment_id", h.deleteComment)
 
 		protected.GET("/feed", h.getFeed)
 

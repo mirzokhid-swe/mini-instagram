@@ -19,6 +19,14 @@ type Post interface {
 	GetFeed(ctx context.Context, callerID int64, page, perPage int) (response.Feed, error)
 	Like(ctx context.Context, callerID, postID int64) error
 	Unlike(ctx context.Context, callerID, postID int64) error
+	GetByID(ctx context.Context, callerID, postID int64) (response.PostDetail, error)
+	Delete(ctx context.Context, callerID, postID int64) error
+}
+
+type Comment interface {
+	Create(ctx context.Context, callerID, postID int64, content string) error
+	List(ctx context.Context, postID int64, page, perPage int) (response.CommentList, error)
+	Delete(ctx context.Context, callerID, commentID int64) error
 }
 
 type User interface {
