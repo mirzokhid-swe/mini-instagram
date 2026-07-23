@@ -33,6 +33,26 @@ type Post interface {
 	IsLiked(ctx context.Context, userID, postID int64) (bool, error)
 	GetForDelete(ctx context.Context, postID int64) (entity.Post, error)
 	SoftDelete(ctx context.Context, postID int64) error
+
+	// GetOwner returns the post's owner id, or entity.ErrPostNotFound if the
+	// post is missing or soft-deleted. Used by the cache-backed like/unlike
+	// path (T22) to run the existence check before touching Redis.
+	GetOwner(ctx context.Context, postID int64) (ownerID int64, err error)
+	// NotifyLike creates a like notification outside of any DB transaction;
+	// used by the cache-backed like path, which writes the like itself to
+	// Redis instead of the likes table.
+	NotifyLike(ctx context.Context, ownerID, actorID, postID int64) error
+	// CountLikesBatch returns like counts from the likes table (the source
+	// of truth once the like cache is in front of it) for the given post
+	// ids. Posts with zero likes are omitted from the result map.
+	CountLikesBatch(ctx context.Context, postIDs []int64) (map[int64]int64, error)
+
+	// InsertLikeRow, DeleteLikeRow and UpdateLikeCount are raw, untransacted
+	// operations used only by the like-cache flush worker (T22) to replay
+	// buffered Redis events into Postgres.
+	InsertLikeRow(ctx context.Context, userID, postID int64) error
+	DeleteLikeRow(ctx context.Context, userID, postID int64) error
+	UpdateLikeCount(ctx context.Context, postID, count int64) error
 }
 
 type Comment interface {

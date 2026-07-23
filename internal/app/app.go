@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"mini-instagram/config"
+	likecache "mini-instagram/internal/cache/like"
 	"mini-instagram/internal/controller/restapi"
 	commentrepo "mini-instagram/internal/repo/persistent/comment"
 	hashtagrepo "mini-instagram/internal/repo/persistent/hashtag"
@@ -23,6 +24,7 @@ import (
 	notificationusecase "mini-instagram/internal/usecase/notification"
 	postusecase "mini-instagram/internal/usecase/post"
 	userusecase "mini-instagram/internal/usecase/user"
+	"mini-instagram/internal/worker/likesync"
 	"mini-instagram/pkg/httpserver"
 	jwtmanager "mini-instagram/pkg/jwt"
 	"mini-instagram/pkg/logger"
@@ -43,19 +45,28 @@ type servers struct {
 	http *httpserver.Server
 }
 
-func initUseCases(pg *postgres.Postgres, cfg *config.Config, l logger.Interface, st *storage.Storage) useCases {
+func initUseCases(pg *postgres.Postgres, cfg *config.Config, l logger.Interface, st *storage.Storage, likeCache *likecache.Cache) (useCases, *postrepo.PostRepo) {
 	userRepo := userrepo.NewUserRepo(pg)
 	postRepo := postrepo.NewPostRepo(pg)
 	commentRepo := commentrepo.NewCommentRepo(pg)
 	notificationRepo := notificationrepo.NewNotificationRepo(pg)
 	hashtagRepo := hashtagrepo.NewHashtagRepo(pg)
+
+	// A nil *likecache.Cache must become a nil postusecase.LikeCache (not a
+	// non-nil interface wrapping a nil pointer), so the usecase's nil check
+	// for "cache unavailable" works correctly.
+	var cache postusecase.LikeCache
+	if likeCache != nil {
+		cache = likeCache
+	}
+
 	return useCases{
 		auth:          authusecase.New(userRepo, jwtmanager.New(cfg.JWT.Secret), l),
-		posts:         postusecase.New(postRepo, hashtagRepo, st, l),
+		posts:         postusecase.New(postRepo, hashtagRepo, cache, st, l),
 		comments:      commentusecase.New(commentRepo),
 		users:         userusecase.New(userRepo, postRepo, st, l),
 		notifications: notificationusecase.New(notificationRepo),
-	}
+	}, postRepo
 }
 
 func initServers(cfg *config.Config, uc useCases, l logger.Interface, st *storage.Storage, redisClient *redis.Client, tokens *jwtmanager.TokenManager) servers {
@@ -117,14 +128,27 @@ func Run(cfg *config.Config) {
 
 	redisClient, err := redis.New(context.Background(), cfg.Redis.URL)
 	if err != nil {
-		l.Error("redis init failed; rate limiting disabled", "error", err)
+		l.Error("redis init failed; rate limiting and like cache disabled", "error", err)
 	} else {
 		defer redisClient.Close()
 	}
 
-	uc := initUseCases(pg, cfg, l, st)
+	var likeCache *likecache.Cache
+	if redisClient != nil {
+		likeCache = likecache.New(redisClient)
+	}
+
+	uc, postRepo := initUseCases(pg, cfg, l, st, likeCache)
 	tokens := jwtmanager.New(cfg.JWT.Secret)
 	s := initServers(cfg, uc, l, st, redisClient, tokens)
 	s.startServers(l)
+
+	workerCtx, cancelWorker := context.WithCancel(context.Background())
+	if likeCache != nil {
+		worker := likesync.New(likeCache, postRepo, l)
+		go worker.Run(workerCtx)
+	}
+
 	s.waitForShutdown(l)
+	cancelWorker()
 }
