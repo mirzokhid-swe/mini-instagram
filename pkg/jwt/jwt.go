@@ -53,3 +53,23 @@ func (m *TokenManager) GenerateAccessToken(user entity.User) (string, error) {
 	}
 	return signed, nil
 }
+
+// ValidateToken parses and validates a JWT access token and returns the claims.
+func (m *TokenManager) ValidateToken(tokenString string) (Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(m.secret), nil
+	})
+	if err != nil {
+		return Claims{}, fmt.Errorf("parse token: %w", err)
+	}
+
+	claims, ok := token.Claims.(*Claims)
+	if !ok || !token.Valid {
+		return Claims{}, fmt.Errorf("invalid token claims")
+	}
+
+	return *claims, nil
+}

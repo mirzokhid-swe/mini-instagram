@@ -1,4 +1,4 @@
-package persistent
+package user
 
 import (
 	"context"
@@ -62,6 +62,58 @@ func (r *UserRepo) FindByEmail(ctx context.Context, email string) (entity.User, 
 	}
 
 	return user, nil
+}
+
+func (r *UserRepo) FindByID(ctx context.Context, id int64) (entity.User, error) {
+	const query = `
+		SELECT id, username, email, full_name, bio, avatar_path, password, is_active
+		FROM users
+		WHERE id = $1
+		LIMIT 1`
+
+	var user entity.User
+	err := r.pool.Pool.QueryRow(ctx, query, id).Scan(
+		&user.ID,
+		&user.Username,
+		&user.Email,
+		&user.FullName,
+		&user.Bio,
+		&user.AvatarPath,
+		&user.PasswordHash,
+		&user.IsActive,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return entity.User{}, entity.ErrNotFound
+	}
+	if err != nil {
+		return entity.User{}, fmt.Errorf("find user by id: %w", err)
+	}
+
+	return user, nil
+}
+
+func (r *UserRepo) GetProfileStats(ctx context.Context, userID int64) (postsCount, followersCount, followingCount int64, err error) {
+	const query = `
+		SELECT
+			(SELECT COUNT(*) FROM posts WHERE user_id = $1 AND deleted_at IS NULL),
+			(SELECT COUNT(*) FROM follows WHERE following_id = $1),
+			(SELECT COUNT(*) FROM follows WHERE follower_id = $1)`
+
+	if err := r.pool.Pool.QueryRow(ctx, query, userID).Scan(&postsCount, &followersCount, &followingCount); err != nil {
+		return 0, 0, 0, fmt.Errorf("get profile stats: %w", err)
+	}
+	return postsCount, followersCount, followingCount, nil
+}
+
+func (r *UserRepo) IsFollowing(ctx context.Context, followerID, followingID int64) (bool, error) {
+	var exists bool
+	if err := r.pool.Pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2)`,
+		followerID, followingID,
+	).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check following: %w", err)
+	}
+	return exists, nil
 }
 
 func (r *UserRepo) Create(ctx context.Context, user entity.User) (entity.User, error) {
