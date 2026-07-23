@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 
 	apihttp "mini-instagram/internal/controller/restapi/v1/http"
@@ -43,4 +45,108 @@ func (h *V1) createPost(c *gin.Context) {
 	}
 
 	h.handleResponse(c, apihttp.OK, nil)
+}
+
+func (h *V1) likePost(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	postID, err := strconv.ParseInt(c.Param("post_id"), 10, 64)
+	if err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid post_id")
+		return
+	}
+
+	if err := h.posts.Like(c.Request.Context(), callerID, postID); err != nil {
+		h.handleUsecaseError(c, err, "like post failed", "user_id", callerID, "post_id", postID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, nil)
+}
+
+func (h *V1) unlikePost(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	postID, err := strconv.ParseInt(c.Param("post_id"), 10, 64)
+	if err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid post_id")
+		return
+	}
+
+	if err := h.posts.Unlike(c.Request.Context(), callerID, postID); err != nil {
+		h.handleUsecaseError(c, err, "unlike post failed", "user_id", callerID, "post_id", postID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, nil)
+}
+
+func (h *V1) getPost(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	postID, err := strconv.ParseInt(c.Param("post_id"), 10, 64)
+	if err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid post_id")
+		return
+	}
+
+	post, err := h.posts.GetByID(c.Request.Context(), callerID, postID)
+	if err != nil {
+		h.handleUsecaseError(c, err, "get post failed", "user_id", callerID, "post_id", postID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, post)
+}
+
+func (h *V1) deletePost(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	postID, err := strconv.ParseInt(c.Param("post_id"), 10, 64)
+	if err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid post_id")
+		return
+	}
+
+	if err := h.posts.Delete(c.Request.Context(), callerID, postID); err != nil {
+		h.handleUsecaseError(c, err, "delete post failed", "user_id", callerID, "post_id", postID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, nil)
+}
+
+func (h *V1) getFeed(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
+
+	feed, err := h.posts.GetFeed(c.Request.Context(), callerID, page, perPage)
+	if err != nil {
+		h.handleUsecaseError(c, err, "get feed failed", "user_id", callerID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, feed)
 }

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"mini-instagram/internal/controller/restapi/v1/request"
 	"mini-instagram/internal/entity"
@@ -20,6 +21,26 @@ import (
 type fakePostRepo struct {
 	created entity.Post
 	err     error
+
+	feedCount int64
+	feedPosts []entity.FeedPost
+	feedErr   error
+
+	lastFeedLimit  int
+	lastFeedOffset int
+
+	likeErr, unlikeErr                 error
+	lastLikeUserID, lastLikePostID     int64
+	lastUnlikeUserID, lastUnlikePostID int64
+
+	getByIDPost   entity.PostDetail
+	getByIDErr    error
+	isLiked       bool
+	isLikedErr    error
+	getForDeleteP entity.Post
+	getForDelErr  error
+	softDeleteErr error
+	lastSoftDelID int64
 }
 
 func (f *fakePostRepo) Create(ctx context.Context, post entity.Post) (entity.Post, error) {
@@ -37,6 +58,49 @@ func (f *fakePostRepo) CountByUser(ctx context.Context, userID int64) (int64, er
 
 func (f *fakePostRepo) ListByUser(ctx context.Context, userID int64, limit, offset int) ([]entity.Post, error) {
 	return nil, nil
+}
+
+func (f *fakePostRepo) CountFeed(ctx context.Context, callerID int64) (int64, error) {
+	if f.feedErr != nil {
+		return 0, f.feedErr
+	}
+	return f.feedCount, nil
+}
+
+func (f *fakePostRepo) ListFeed(ctx context.Context, callerID int64, limit, offset int) ([]entity.FeedPost, error) {
+	if f.feedErr != nil {
+		return nil, f.feedErr
+	}
+	f.lastFeedLimit = limit
+	f.lastFeedOffset = offset
+	return f.feedPosts, nil
+}
+
+func (f *fakePostRepo) Like(ctx context.Context, userID, postID int64) error {
+	f.lastLikeUserID, f.lastLikePostID = userID, postID
+	return f.likeErr
+}
+
+func (f *fakePostRepo) Unlike(ctx context.Context, userID, postID int64) error {
+	f.lastUnlikeUserID, f.lastUnlikePostID = userID, postID
+	return f.unlikeErr
+}
+
+func (f *fakePostRepo) GetByID(ctx context.Context, postID int64) (entity.PostDetail, error) {
+	return f.getByIDPost, f.getByIDErr
+}
+
+func (f *fakePostRepo) IsLiked(ctx context.Context, userID, postID int64) (bool, error) {
+	return f.isLiked, f.isLikedErr
+}
+
+func (f *fakePostRepo) GetForDelete(ctx context.Context, postID int64) (entity.Post, error) {
+	return f.getForDeleteP, f.getForDelErr
+}
+
+func (f *fakePostRepo) SoftDelete(ctx context.Context, postID int64) error {
+	f.lastSoftDelID = postID
+	return f.softDeleteErr
 }
 
 func newTestStorage(t *testing.T) *storage.Storage {
@@ -196,5 +260,199 @@ func TestCreatePost_CleanupOnRepoFailure(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("expected cleanup of image file, found %d entries", len(entries))
+	}
+}
+
+func TestGetFeed_Success(t *testing.T) {
+	now := time.Now()
+	repo := &fakePostRepo{
+		feedCount: 2,
+		feedPosts: []entity.FeedPost{
+			{ID: 2, UserID: 5, Username: "bob", Caption: "hi", ImagePath: "posts/b.jpg", LikeCount: 3, CommentCount: 1, CreatedAt: now},
+			{ID: 1, UserID: 5, Username: "bob", Caption: "hello", ImagePath: "posts/a.jpg", CreatedAt: now.Add(-time.Hour)},
+		},
+	}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	feed, err := uc.GetFeed(context.Background(), 1, 1, 10)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if feed.Count != 2 {
+		t.Fatalf("expected count 2, got %d", feed.Count)
+	}
+	if len(feed.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(feed.Items))
+	}
+	if feed.Items[0].PostID != 2 || feed.Items[0].Username != "bob" {
+		t.Fatalf("unexpected first item: %+v", feed.Items[0])
+	}
+	if feed.Items[0].LikesCount != 3 || feed.Items[0].CommentsCount != 1 {
+		t.Fatalf("expected counters to be carried over, got %+v", feed.Items[0])
+	}
+}
+
+func TestGetFeed_EmptyWhenFollowingNobody(t *testing.T) {
+	repo := &fakePostRepo{}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	feed, err := uc.GetFeed(context.Background(), 1, 1, 10)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if feed.Count != 0 || len(feed.Items) != 0 {
+		t.Fatalf("expected empty feed, got %+v", feed)
+	}
+}
+
+func TestGetFeed_PaginationClamping(t *testing.T) {
+	repo := &fakePostRepo{}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	if _, err := uc.GetFeed(context.Background(), 1, 0, 0); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.lastFeedLimit != DefaultPerPage || repo.lastFeedOffset != 0 {
+		t.Fatalf("expected defaults to apply, got limit=%d offset=%d", repo.lastFeedLimit, repo.lastFeedOffset)
+	}
+
+	if _, err := uc.GetFeed(context.Background(), 1, 3, 1000); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.lastFeedLimit != MaxPerPage {
+		t.Fatalf("expected per_page to be clamped to %d, got %d", MaxPerPage, repo.lastFeedLimit)
+	}
+	wantOffset := (3 - 1) * MaxPerPage
+	if repo.lastFeedOffset != wantOffset {
+		t.Fatalf("expected offset %d, got %d", wantOffset, repo.lastFeedOffset)
+	}
+}
+
+func TestGetFeed_RepoError(t *testing.T) {
+	repo := &fakePostRepo{feedErr: errors.New("db failure")}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	if _, err := uc.GetFeed(context.Background(), 1, 1, 10); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestLike_Success(t *testing.T) {
+	repo := &fakePostRepo{}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	if err := uc.Like(context.Background(), 1, 2); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.lastLikeUserID != 1 || repo.lastLikePostID != 2 {
+		t.Fatalf("expected repo called with (1, 2), got (%d, %d)", repo.lastLikeUserID, repo.lastLikePostID)
+	}
+}
+
+func TestLike_PostNotFound(t *testing.T) {
+	repo := &fakePostRepo{likeErr: entity.ErrPostNotFound}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	err := uc.Like(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrPostNotFound) {
+		t.Fatalf("expected ErrPostNotFound, got %v", err)
+	}
+}
+
+func TestUnlike_Success(t *testing.T) {
+	repo := &fakePostRepo{}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	if err := uc.Unlike(context.Background(), 1, 2); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.lastUnlikeUserID != 1 || repo.lastUnlikePostID != 2 {
+		t.Fatalf("expected repo called with (1, 2), got (%d, %d)", repo.lastUnlikeUserID, repo.lastUnlikePostID)
+	}
+}
+
+func TestUnlike_NotLiked(t *testing.T) {
+	repo := &fakePostRepo{unlikeErr: entity.ErrNotLiked}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	err := uc.Unlike(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrNotLiked) {
+		t.Fatalf("expected ErrNotLiked, got %v", err)
+	}
+}
+
+func TestGetByID_Success(t *testing.T) {
+	now := time.Now()
+	repo := &fakePostRepo{
+		getByIDPost: entity.PostDetail{ID: 2, UserID: 5, Username: "bob", Caption: "hi", ImagePath: "posts/b.jpg", LikeCount: 3, CommentCount: 1, CreatedAt: now},
+		isLiked:     true,
+	}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	post, err := uc.GetByID(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if post.PostID != 2 || post.Username != "bob" || !post.IsLiked {
+		t.Fatalf("unexpected post detail: %+v", post)
+	}
+}
+
+func TestGetByID_NotFound(t *testing.T) {
+	repo := &fakePostRepo{getByIDErr: entity.ErrPostNotFound}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	_, err := uc.GetByID(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrPostNotFound) {
+		t.Fatalf("expected ErrPostNotFound, got %v", err)
+	}
+}
+
+func TestDelete_Success(t *testing.T) {
+	st := newTestStorage(t)
+	if _, err := st.Save("posts/img.jpg", strings.NewReader("img")); err != nil {
+		t.Fatalf("seed image: %v", err)
+	}
+	if _, err := st.Save("thumbnails/thumb.jpg", strings.NewReader("thumb")); err != nil {
+		t.Fatalf("seed thumbnail: %v", err)
+	}
+
+	repo := &fakePostRepo{getForDeleteP: entity.Post{ID: 2, UserID: 1, ImagePath: "posts/img.jpg", ThumbnailPath: "thumbnails/thumb.jpg"}}
+	uc := New(repo, st, nopLogger{})
+
+	if err := uc.Delete(context.Background(), 1, 2); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.lastSoftDelID != 2 {
+		t.Fatalf("expected post 2 soft-deleted, got %d", repo.lastSoftDelID)
+	}
+	if _, err := os.Stat(st.FullPath("posts/img.jpg")); !os.IsNotExist(err) {
+		t.Fatalf("expected image file to be removed, stat err: %v", err)
+	}
+	if _, err := os.Stat(st.FullPath("thumbnails/thumb.jpg")); !os.IsNotExist(err) {
+		t.Fatalf("expected thumbnail file to be removed, stat err: %v", err)
+	}
+}
+
+func TestDelete_NotOwner(t *testing.T) {
+	repo := &fakePostRepo{getForDeleteP: entity.Post{ID: 2, UserID: 99, ImagePath: "posts/img.jpg"}}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	err := uc.Delete(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+	if repo.lastSoftDelID != 0 {
+		t.Fatal("expected soft delete not to be called")
+	}
+}
+
+func TestDelete_NotFound(t *testing.T) {
+	repo := &fakePostRepo{getForDelErr: entity.ErrPostNotFound}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	err := uc.Delete(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrPostNotFound) {
+		t.Fatalf("expected ErrPostNotFound, got %v", err)
 	}
 }

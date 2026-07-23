@@ -23,12 +23,20 @@ func (h *V1) handleUsecaseError(c *gin.Context, err error, logMsg string, logFie
 		h.handleError(c, apihttp.BadRequest, vErr.Message)
 	case errors.Is(err, entity.ErrNotFound):
 		h.handleError(c, apihttp.NOT_FOUND, "user not found")
+	case errors.Is(err, entity.ErrPostNotFound):
+		h.handleError(c, apihttp.NOT_FOUND, "post not found")
 	case errors.Is(err, entity.ErrUsernameTaken):
 		h.handleError(c, apihttp.Conflict, "username already exists")
 	case errors.Is(err, entity.ErrEmailTaken):
 		h.handleError(c, apihttp.Conflict, "email already exists")
 	case errors.Is(err, entity.ErrInvalidCredentials):
 		h.handleError(c, apihttp.Unauthorized, "invalid email or password")
+	case errors.Is(err, entity.ErrNotLiked):
+		h.handleError(c, apihttp.Conflict, "post is not liked")
+	case errors.Is(err, entity.ErrCommentNotFound):
+		h.handleError(c, apihttp.NOT_FOUND, "comment not found")
+	case errors.Is(err, entity.ErrForbidden):
+		h.handleError(c, apihttp.Forbidden, "forbidden")
 	default:
 		h.logger.Error(logMsg, append(logFields, "error", err)...)
 		h.handleError(c, apihttp.InternalServerError, "internal server error")
