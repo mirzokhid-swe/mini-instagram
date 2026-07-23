@@ -35,15 +35,32 @@ const (
 
 var hashtagPattern = regexp.MustCompile(`#([\p{L}\p{N}_]+)`)
 
-type UseCase struct {
-	posts    repo.Post
-	hashtags repo.Hashtag
-	st       *storage.Storage
-	logger   logger.Interface
+// LikeCache is the write-buffer/read-cache the like/unlike usecase talks
+// to (T22). A nil likeCache on UseCase means the cache is unavailable
+// (e.g. Redis down at startup) and every like/unlike/count/is_liked
+// operation falls back to Postgres directly.
+type LikeCache interface {
+	GetLikeState(ctx context.Context, userID, postID int64) (value string, found bool, err error)
+	SetLikeState(ctx context.Context, userID, postID int64, value string) error
+	DeleteLikeState(ctx context.Context, userID, postID int64) error
+	GetCount(ctx context.Context, postID int64) (count, updatedAt int64, found bool, err error)
+	GetCounts(ctx context.Context, postIDs []int64) (counts map[int64]int64, missing []int64, err error)
+	InitCount(ctx context.Context, postID, count int64) error
+	IncrCount(ctx context.Context, postID int64) error
+	DecrCount(ctx context.Context, postID int64) error
+	DeleteCount(ctx context.Context, postID int64) error
 }
 
-func New(posts repo.Post, hashtags repo.Hashtag, st *storage.Storage, logger logger.Interface) usecase.Post {
-	return &UseCase{posts: posts, hashtags: hashtags, st: st, logger: logger}
+type UseCase struct {
+	posts     repo.Post
+	hashtags  repo.Hashtag
+	likeCache LikeCache
+	st        *storage.Storage
+	logger    logger.Interface
+}
+
+func New(posts repo.Post, hashtags repo.Hashtag, likeCache LikeCache, st *storage.Storage, logger logger.Interface) usecase.Post {
+	return &UseCase{posts: posts, hashtags: hashtags, likeCache: likeCache, st: st, logger: logger}
 }
 
 // parseHashtags extracts, lowercases, and dedupes hashtags from a caption,
@@ -180,6 +197,15 @@ func (u *UseCase) GetFeed(ctx context.Context, callerID int64, page, perPage int
 		return response.Feed{}, fmt.Errorf("list feed: %w", err)
 	}
 
+	postIDs := make([]int64, len(posts))
+	for i, p := range posts {
+		postIDs[i] = p.ID
+	}
+	likeCounts, err := u.likeCountsCached(ctx, postIDs)
+	if err != nil {
+		return response.Feed{}, fmt.Errorf("get like counts: %w", err)
+	}
+
 	items := make([]response.FeedItem, len(posts))
 	for i, p := range posts {
 		items[i] = response.FeedItem{
@@ -188,7 +214,7 @@ func (u *UseCase) GetFeed(ctx context.Context, callerID int64, page, perPage int
 			PostID:        p.ID,
 			Caption:       p.Caption,
 			ImagePath:     p.ImagePath,
-			LikesCount:    p.LikeCount,
+			LikesCount:    likeCounts[p.ID],
 			CommentsCount: p.CommentCount,
 			CreatedAt:     p.CreatedAt,
 		}
@@ -198,17 +224,221 @@ func (u *UseCase) GetFeed(ctx context.Context, callerID int64, page, perPage int
 }
 
 func (u *UseCase) Like(ctx context.Context, callerID, postID int64) error {
-	if err := u.posts.Like(ctx, callerID, postID); err != nil {
-		return fmt.Errorf("like post: %w", err)
+	if u.likeCache == nil {
+		if err := u.posts.Like(ctx, callerID, postID); err != nil {
+			return fmt.Errorf("like post: %w", err)
+		}
+		return nil
 	}
+
+	ownerID, err := u.posts.GetOwner(ctx, postID)
+	if err != nil {
+		return err
+	}
+
+	isLiked, err := u.isLikedCached(ctx, callerID, postID)
+	if err != nil {
+		u.logger.Error("like cache unavailable, falling back to db", "error", err)
+		if err := u.posts.Like(ctx, callerID, postID); err != nil {
+			return fmt.Errorf("like post: %w", err)
+		}
+		return nil
+	}
+	if isLiked {
+		return nil
+	}
+
+	state, found, err := u.likeCache.GetLikeState(ctx, callerID, postID)
+	if err != nil {
+		u.logger.Error("like cache unavailable, falling back to db", "error", err)
+		if err := u.posts.Like(ctx, callerID, postID); err != nil {
+			return fmt.Errorf("like post: %w", err)
+		}
+		return nil
+	}
+
+	if found && state == "0" {
+		if err := u.likeCache.DeleteLikeState(ctx, callerID, postID); err != nil {
+			u.logger.Error("failed to cancel pending unlike", "post_id", postID, "error", err)
+		}
+	} else if err := u.likeCache.SetLikeState(ctx, callerID, postID, "1"); err != nil {
+		u.logger.Error("failed to set pending like", "post_id", postID, "error", err)
+	}
+
+	if err := u.ensureCountInitialized(ctx, postID); err != nil {
+		u.logger.Error("failed to initialize like count cache", "post_id", postID, "error", err)
+	}
+	if err := u.likeCache.IncrCount(ctx, postID); err != nil {
+		u.logger.Error("failed to increment like count cache", "post_id", postID, "error", err)
+	}
+
+	if ownerID != callerID {
+		if err := u.posts.NotifyLike(ctx, ownerID, callerID, postID); err != nil {
+			u.logger.Error("failed to create like notification", "post_id", postID, "error", err)
+		}
+	}
+
 	return nil
 }
 
 func (u *UseCase) Unlike(ctx context.Context, callerID, postID int64) error {
-	if err := u.posts.Unlike(ctx, callerID, postID); err != nil {
-		return fmt.Errorf("unlike post: %w", err)
+	if u.likeCache == nil {
+		if err := u.posts.Unlike(ctx, callerID, postID); err != nil {
+			return fmt.Errorf("unlike post: %w", err)
+		}
+		return nil
 	}
+
+	if _, err := u.posts.GetOwner(ctx, postID); err != nil {
+		return err
+	}
+
+	isLiked, err := u.isLikedCached(ctx, callerID, postID)
+	if err != nil {
+		u.logger.Error("like cache unavailable, falling back to db", "error", err)
+		if err := u.posts.Unlike(ctx, callerID, postID); err != nil {
+			return fmt.Errorf("unlike post: %w", err)
+		}
+		return nil
+	}
+	if !isLiked {
+		return entity.ErrNotLiked
+	}
+
+	state, found, err := u.likeCache.GetLikeState(ctx, callerID, postID)
+	if err != nil {
+		u.logger.Error("like cache unavailable, falling back to db", "error", err)
+		if err := u.posts.Unlike(ctx, callerID, postID); err != nil {
+			return fmt.Errorf("unlike post: %w", err)
+		}
+		return nil
+	}
+
+	if found && state == "1" {
+		if err := u.likeCache.DeleteLikeState(ctx, callerID, postID); err != nil {
+			u.logger.Error("failed to cancel pending like", "post_id", postID, "error", err)
+		}
+	} else if err := u.likeCache.SetLikeState(ctx, callerID, postID, "0"); err != nil {
+		u.logger.Error("failed to set pending unlike", "post_id", postID, "error", err)
+	}
+
+	if err := u.ensureCountInitialized(ctx, postID); err != nil {
+		u.logger.Error("failed to initialize like count cache", "post_id", postID, "error", err)
+	}
+	if err := u.likeCache.DecrCount(ctx, postID); err != nil {
+		u.logger.Error("failed to decrement like count cache", "post_id", postID, "error", err)
+	}
+
 	return nil
+}
+
+// isLikedCached resolves is_liked for (userID, postID) through the like
+// cache, falling back to Postgres on a cache miss (normal) or a cache
+// error (Redis down).
+func (u *UseCase) isLikedCached(ctx context.Context, userID, postID int64) (bool, error) {
+	if u.likeCache != nil {
+		state, found, err := u.likeCache.GetLikeState(ctx, userID, postID)
+		if err == nil {
+			if found {
+				return state == "1", nil
+			}
+			return u.posts.IsLiked(ctx, userID, postID)
+		}
+		u.logger.Error("like cache read failed, falling back to db", "error", err)
+	}
+	return u.posts.IsLiked(ctx, userID, postID)
+}
+
+// likeCountCached resolves the like count for a single post through the
+// cache, initializing it from Postgres on a miss.
+func (u *UseCase) likeCountCached(ctx context.Context, postID int64) (int64, error) {
+	if u.likeCache != nil {
+		count, _, found, err := u.likeCache.GetCount(ctx, postID)
+		if err == nil {
+			if found {
+				return count, nil
+			}
+			counts, err := u.posts.CountLikesBatch(ctx, []int64{postID})
+			if err != nil {
+				return 0, fmt.Errorf("count likes: %w", err)
+			}
+			dbCount := counts[postID]
+			if err := u.likeCache.InitCount(ctx, postID, dbCount); err != nil {
+				u.logger.Error("failed to init like count cache", "post_id", postID, "error", err)
+			}
+			return dbCount, nil
+		}
+		u.logger.Error("like cache read failed, falling back to db", "error", err)
+	}
+
+	counts, err := u.posts.CountLikesBatch(ctx, []int64{postID})
+	if err != nil {
+		return 0, fmt.Errorf("count likes: %w", err)
+	}
+	return counts[postID], nil
+}
+
+// likeCountsCached resolves like counts for multiple posts, batching the
+// cache reads via a pipeline and the DB fallback via a single grouped
+// COUNT query for whatever missed the cache.
+func (u *UseCase) likeCountsCached(ctx context.Context, postIDs []int64) (map[int64]int64, error) {
+	if len(postIDs) == 0 {
+		return map[int64]int64{}, nil
+	}
+
+	var counts map[int64]int64
+	missing := postIDs
+
+	if u.likeCache != nil {
+		cached, miss, err := u.likeCache.GetCounts(ctx, postIDs)
+		if err == nil {
+			counts = cached
+			missing = miss
+		} else {
+			u.logger.Error("like cache batch read failed, falling back to db", "error", err)
+			counts = make(map[int64]int64, len(postIDs))
+		}
+	} else {
+		counts = make(map[int64]int64, len(postIDs))
+	}
+
+	if len(missing) == 0 {
+		return counts, nil
+	}
+
+	dbCounts, err := u.posts.CountLikesBatch(ctx, missing)
+	if err != nil {
+		return nil, fmt.Errorf("count likes batch: %w", err)
+	}
+	for _, id := range missing {
+		count := dbCounts[id]
+		counts[id] = count
+		if u.likeCache != nil {
+			if err := u.likeCache.InitCount(ctx, id, count); err != nil {
+				u.logger.Error("failed to init like count cache", "post_id", id, "error", err)
+			}
+		}
+	}
+
+	return counts, nil
+}
+
+// ensureCountInitialized seeds the like count cache from Postgres if it
+// hasn't been initialized yet, so IncrCount/DecrCount never operate on an
+// empty hash.
+func (u *UseCase) ensureCountInitialized(ctx context.Context, postID int64) error {
+	_, _, found, err := u.likeCache.GetCount(ctx, postID)
+	if err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	counts, err := u.posts.CountLikesBatch(ctx, []int64{postID})
+	if err != nil {
+		return err
+	}
+	return u.likeCache.InitCount(ctx, postID, counts[postID])
 }
 
 func (u *UseCase) GetByID(ctx context.Context, callerID, postID int64) (response.PostDetail, error) {
@@ -217,9 +447,14 @@ func (u *UseCase) GetByID(ctx context.Context, callerID, postID int64) (response
 		return response.PostDetail{}, fmt.Errorf("get post: %w", err)
 	}
 
-	isLiked, err := u.posts.IsLiked(ctx, callerID, postID)
+	isLiked, err := u.isLikedCached(ctx, callerID, postID)
 	if err != nil {
 		return response.PostDetail{}, fmt.Errorf("check is liked: %w", err)
+	}
+
+	likesCount, err := u.likeCountCached(ctx, postID)
+	if err != nil {
+		return response.PostDetail{}, fmt.Errorf("get like count: %w", err)
 	}
 
 	return response.PostDetail{
@@ -228,7 +463,7 @@ func (u *UseCase) GetByID(ctx context.Context, callerID, postID int64) (response
 		Username:      post.Username,
 		Caption:       post.Caption,
 		ImagePath:     post.ImagePath,
-		LikesCount:    post.LikeCount,
+		LikesCount:    likesCount,
 		CommentsCount: post.CommentCount,
 		CreatedAt:     post.CreatedAt,
 		IsLiked:       isLiked,
@@ -246,6 +481,12 @@ func (u *UseCase) Delete(ctx context.Context, callerID, postID int64) error {
 
 	if err := u.posts.SoftDelete(ctx, postID); err != nil {
 		return fmt.Errorf("soft delete post: %w", err)
+	}
+
+	if u.likeCache != nil {
+		if err := u.likeCache.DeleteCount(ctx, postID); err != nil {
+			u.logger.Error("failed to delete like count cache", "post_id", postID, "error", err)
+		}
 	}
 
 	if err := u.st.Delete(post.ImagePath); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -286,6 +527,15 @@ func (u *UseCase) SearchByTag(ctx context.Context, tag string, page, perPage int
 		return response.HashtagPostList{}, fmt.Errorf("list posts by hashtag: %w", err)
 	}
 
+	postIDs := make([]int64, len(posts))
+	for i, p := range posts {
+		postIDs[i] = p.ID
+	}
+	likeCounts, err := u.likeCountsCached(ctx, postIDs)
+	if err != nil {
+		return response.HashtagPostList{}, fmt.Errorf("get like counts: %w", err)
+	}
+
 	items := make([]response.HashtagPostItem, len(posts))
 	for i, p := range posts {
 		items[i] = response.HashtagPostItem{
@@ -294,7 +544,7 @@ func (u *UseCase) SearchByTag(ctx context.Context, tag string, page, perPage int
 			Username:      p.Username,
 			ThumbnailPath: p.ThumbnailPath,
 			Caption:       p.Caption,
-			LikesCount:    p.LikeCount,
+			LikesCount:    likeCounts[p.ID],
 			CommentsCount: p.CommentCount,
 			CreatedAt:     p.CreatedAt,
 		}

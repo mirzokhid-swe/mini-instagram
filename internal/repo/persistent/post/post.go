@@ -277,3 +277,81 @@ func (r *PostRepo) ListFeed(ctx context.Context, callerID int64, limit, offset i
 
 	return posts, nil
 }
+
+func (r *PostRepo) GetOwner(ctx context.Context, postID int64) (int64, error) {
+	var ownerID int64
+	err := r.pool.Pool.QueryRow(ctx, `SELECT user_id FROM posts WHERE id = $1 AND deleted_at IS NULL`, postID).Scan(&ownerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, entity.ErrPostNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("get post owner: %w", err)
+	}
+	return ownerID, nil
+}
+
+func (r *PostRepo) NotifyLike(ctx context.Context, ownerID, actorID, postID int64) error {
+	if _, err := r.pool.Pool.Exec(ctx,
+		`INSERT INTO notifications (user_id, actor_id, action_type, post_id) VALUES ($1, $2, 'like', $3)`,
+		ownerID, actorID, postID,
+	); err != nil {
+		return fmt.Errorf("insert like notification: %w", err)
+	}
+	return nil
+}
+
+func (r *PostRepo) CountLikesBatch(ctx context.Context, postIDs []int64) (map[int64]int64, error) {
+	counts := make(map[int64]int64, len(postIDs))
+	if len(postIDs) == 0 {
+		return counts, nil
+	}
+
+	rows, err := r.pool.Pool.Query(ctx,
+		`SELECT post_id, COUNT(*) FROM likes WHERE post_id = ANY($1) GROUP BY post_id`,
+		postIDs,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("count likes batch: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var postID, count int64
+		if err := rows.Scan(&postID, &count); err != nil {
+			return nil, fmt.Errorf("scan like count row: %w", err)
+		}
+		counts[postID] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate like count rows: %w", err)
+	}
+
+	return counts, nil
+}
+
+func (r *PostRepo) InsertLikeRow(ctx context.Context, userID, postID int64) error {
+	if _, err := r.pool.Pool.Exec(ctx,
+		`INSERT INTO likes (user_id, post_id) VALUES ($1, $2) ON CONFLICT (user_id, post_id) DO NOTHING`,
+		userID, postID,
+	); err != nil {
+		return fmt.Errorf("insert like row: %w", err)
+	}
+	return nil
+}
+
+func (r *PostRepo) DeleteLikeRow(ctx context.Context, userID, postID int64) error {
+	if _, err := r.pool.Pool.Exec(ctx, `DELETE FROM likes WHERE user_id = $1 AND post_id = $2`, userID, postID); err != nil {
+		return fmt.Errorf("delete like row: %w", err)
+	}
+	return nil
+}
+
+func (r *PostRepo) UpdateLikeCount(ctx context.Context, postID, count int64) error {
+	if _, err := r.pool.Pool.Exec(ctx,
+		`UPDATE posts SET like_count = $1, updated_at = now() WHERE id = $2`,
+		count, postID,
+	); err != nil {
+		return fmt.Errorf("update like count: %w", err)
+	}
+	return nil
+}
