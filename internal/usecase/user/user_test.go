@@ -129,6 +129,18 @@ func (f *fakePostRepo) SoftDelete(ctx context.Context, postID int64) error { ret
 func (f *fakePostRepo) ListFeed(ctx context.Context, callerID int64, limit, offset int) ([]entity.FeedPost, error) {
 	return nil, nil
 }
+func (f *fakePostRepo) GetOwner(ctx context.Context, postID int64) (int64, error) { return 0, nil }
+func (f *fakePostRepo) NotifyLike(ctx context.Context, ownerID, actorID, postID int64) error {
+	return nil
+}
+func (f *fakePostRepo) CountLikesBatch(ctx context.Context, postIDs []int64) (map[int64]int64, error) {
+	return nil, nil
+}
+func (f *fakePostRepo) InsertLikeRow(ctx context.Context, userID, postID int64) error { return nil }
+func (f *fakePostRepo) DeleteLikeRow(ctx context.Context, userID, postID int64) error { return nil }
+func (f *fakePostRepo) UpdateLikeCount(ctx context.Context, postID, count int64) error {
+	return nil
+}
 
 func newTestStorage(t *testing.T) *storage.Storage {
 	t.Helper()
