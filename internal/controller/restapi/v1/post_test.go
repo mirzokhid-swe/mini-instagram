@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"mini-instagram/internal/controller/restapi/v1/request"
+	"mini-instagram/internal/controller/restapi/v1/response"
 	"mini-instagram/pkg/logger"
 	"mini-instagram/pkg/storage"
 )
@@ -28,6 +29,10 @@ type fakePostUseCase struct {
 func (f *fakePostUseCase) Create(ctx context.Context, input request.CreatePost) error {
 	f.called = true
 	return f.err
+}
+
+func (f *fakePostUseCase) GetFeed(ctx context.Context, callerID int64, page, perPage int) (response.Feed, error) {
+	return response.Feed{}, nil
 }
 
 func newTestPostHandler(uc *fakePostUseCase) (*gin.Engine, *storage.Storage) {

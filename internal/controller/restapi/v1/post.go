@@ -1,13 +1,12 @@
 package v1
 
 import (
-	"errors"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
 	apihttp "mini-instagram/internal/controller/restapi/v1/http"
 	"mini-instagram/internal/controller/restapi/v1/request"
-	"mini-instagram/internal/entity"
 	"mini-instagram/pkg/image"
 )
 
@@ -41,15 +40,28 @@ func (h *V1) createPost(c *gin.Context) {
 	defer file.Close()
 
 	if err := h.posts.Create(c.Request.Context(), request.CreatePost{UserID: uid, Caption: caption, File: file, Header: header}); err != nil {
-		switch {
-		case errors.Is(err, entity.ErrNotFound):
-			h.handleError(c, apihttp.NOT_FOUND, "user not found")
-		default:
-			h.logger.Error("create post failed", "user_id", uid, "error", err)
-			h.handleError(c, apihttp.BadRequest, err.Error())
-		}
+		h.handleUsecaseError(c, err, "create post failed", "user_id", uid)
 		return
 	}
 
 	h.handleResponse(c, apihttp.OK, nil)
+}
+
+func (h *V1) getFeed(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
+
+	feed, err := h.posts.GetFeed(c.Request.Context(), callerID, page, perPage)
+	if err != nil {
+		h.handleUsecaseError(c, err, "get feed failed", "user_id", callerID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, feed)
 }

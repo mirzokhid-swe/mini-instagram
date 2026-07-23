@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"mini-instagram/internal/controller/restapi/v1/request"
+	"mini-instagram/internal/controller/restapi/v1/response"
 )
 
 type Auth interface {
@@ -15,4 +16,11 @@ type Auth interface {
 
 type Post interface {
 	Create(ctx context.Context, input request.CreatePost) error
+	GetFeed(ctx context.Context, callerID int64, page, perPage int) (response.Feed, error)
+}
+
+type User interface {
+	GetProfile(ctx context.Context, userID, callerID int64) (response.Profile, error)
+	GetUserPosts(ctx context.Context, userID int64, page, perPage int) (response.UserPosts, error)
+	UpdateProfile(ctx context.Context, input request.UpdateProfile) error
 }

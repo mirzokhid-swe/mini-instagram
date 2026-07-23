@@ -12,6 +12,7 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 
 	"mini-instagram/internal/controller/restapi/v1/request"
+	"mini-instagram/internal/controller/restapi/v1/response"
 	"mini-instagram/internal/entity"
 	"mini-instagram/internal/repo"
 	"mini-instagram/internal/usecase"
@@ -20,7 +21,12 @@ import (
 	"mini-instagram/pkg/storage"
 )
 
-const MaxCaptionLength = 2048
+const (
+	MaxCaptionLength = 2048
+	DefaultPage      = 1
+	DefaultPerPage   = 10
+	MaxPerPage       = 100
+)
 
 type UseCase struct {
 	posts  repo.Post
@@ -118,6 +124,45 @@ func (u *UseCase) Create(ctx context.Context, input request.CreatePost) error {
 	cleanupImage = false
 	cleanupThumb = false
 	return nil
+}
+
+func (u *UseCase) GetFeed(ctx context.Context, callerID int64, page, perPage int) (response.Feed, error) {
+	if page < 1 {
+		page = DefaultPage
+	}
+	if perPage < 1 {
+		perPage = DefaultPerPage
+	}
+	if perPage > MaxPerPage {
+		perPage = MaxPerPage
+	}
+	offset := (page - 1) * perPage
+
+	count, err := u.posts.CountFeed(ctx, callerID)
+	if err != nil {
+		return response.Feed{}, fmt.Errorf("count feed: %w", err)
+	}
+
+	posts, err := u.posts.ListFeed(ctx, callerID, perPage, offset)
+	if err != nil {
+		return response.Feed{}, fmt.Errorf("list feed: %w", err)
+	}
+
+	items := make([]response.FeedItem, len(posts))
+	for i, p := range posts {
+		items[i] = response.FeedItem{
+			UserID:        p.UserID,
+			Username:      p.Username,
+			PostID:        p.ID,
+			Caption:       p.Caption,
+			ImagePath:     p.ImagePath,
+			LikesCount:    p.LikeCount,
+			CommentsCount: p.CommentCount,
+			CreatedAt:     p.CreatedAt,
+		}
+	}
+
+	return response.Feed{Count: count, Items: items}, nil
 }
 
 func randomHex(n int) string {
