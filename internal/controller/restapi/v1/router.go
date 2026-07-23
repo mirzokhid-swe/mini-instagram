@@ -86,5 +86,10 @@ func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, comm
 			notifications.GET("", h.listNotifications)
 			notifications.PUT("/:notification_id/read", h.markNotificationRead)
 		}
+
+		search := protected.Group("/search")
+		{
+			search.GET("/users", h.searchUsers)
+		}
 	}
 }

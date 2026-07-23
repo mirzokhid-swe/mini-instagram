@@ -36,6 +36,13 @@ type fakeUserRepo struct {
 	followedWith struct {
 		followerID, followingID int64
 	}
+
+	searchCount   int64
+	searchResults []entity.User
+	searchErr     error
+	searchArgs    struct {
+		likePattern, exactMatch string
+	}
 }
 
 func (f *fakeUserRepo) EmailExists(ctx context.Context, email string) (bool, error) {
@@ -85,6 +92,16 @@ func (f *fakeUserRepo) Follow(ctx context.Context, followerID, followingID int64
 
 func (f *fakeUserRepo) Unfollow(ctx context.Context, followerID, followingID int64) error {
 	return f.unfollowErr
+}
+
+func (f *fakeUserRepo) CountSearch(ctx context.Context, likePattern string) (int64, error) {
+	return f.searchCount, f.searchErr
+}
+
+func (f *fakeUserRepo) Search(ctx context.Context, likePattern, exactMatch string, limit, offset int) ([]entity.User, error) {
+	f.searchArgs.likePattern = likePattern
+	f.searchArgs.exactMatch = exactMatch
+	return f.searchResults, f.searchErr
 }
 
 type fakePostRepo struct{}
@@ -317,6 +334,47 @@ func TestUpdateProfile_CleansUpNewAvatarOnUpdateFailure(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("expected newly saved avatar to be cleaned up, found %d entries", len(entries))
+	}
+}
+
+func TestSearchUsers_EmptyQuery(t *testing.T) {
+	users := &fakeUserRepo{}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	_, err := uc.SearchUsers(context.Background(), "   ", 1, 10)
+	var vErr *entity.ValidationError
+	if !errors.As(err, &vErr) || vErr.Field != "q" {
+		t.Fatalf("expected validation error on field q, got %v", err)
+	}
+}
+
+func TestSearchUsers_TooLong(t *testing.T) {
+	users := &fakeUserRepo{}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	_, err := uc.SearchUsers(context.Background(), strings.Repeat("a", 33), 1, 10)
+	var vErr *entity.ValidationError
+	if !errors.As(err, &vErr) || vErr.Field != "q" {
+		t.Fatalf("expected validation error on field q, got %v", err)
+	}
+}
+
+func TestSearchUsers_EscapesWildcardsAndLowercasesExactMatch(t *testing.T) {
+	users := &fakeUserRepo{searchCount: 1, searchResults: []entity.User{{ID: 1, Username: "jane_doe", FullName: "Jane Doe"}}}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	result, err := uc.SearchUsers(context.Background(), "Jane%_", 1, 10)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Count != 1 || len(result.Items) != 1 {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if users.searchArgs.likePattern != `Jane\%\_` {
+		t.Fatalf("expected escaped like pattern, got %q", users.searchArgs.likePattern)
+	}
+	if users.searchArgs.exactMatch != "jane%_" {
+		t.Fatalf("expected lowercased exact match, got %q", users.searchArgs.exactMatch)
 	}
 }
 

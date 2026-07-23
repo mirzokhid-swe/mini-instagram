@@ -17,6 +17,8 @@ type User interface {
 	IsFollowing(ctx context.Context, followerID, followingID int64) (bool, error)
 	Follow(ctx context.Context, followerID, followingID int64) error
 	Unfollow(ctx context.Context, followerID, followingID int64) error
+	CountSearch(ctx context.Context, likePattern string) (int64, error)
+	Search(ctx context.Context, likePattern, exactMatch string, limit, offset int) ([]entity.User, error)
 }
 
 type Post interface {
