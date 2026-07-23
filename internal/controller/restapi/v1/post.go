@@ -10,6 +10,20 @@ import (
 	"mini-instagram/pkg/image"
 )
 
+// createPost godoc
+//
+//	@Summary		Create a post
+//	@Description	Uploads an image (max 10 MB, jpeg/png/webp), generates a thumbnail, and parses hashtags from the caption.
+//	@Tags			posts
+//	@Accept			mpfd
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			image	formData	file	true	"Post image (jpeg/png/webp, max 10MB)"
+//	@Param			caption	formData	string	false	"Caption (max 2048 chars, may include #hashtags)"
+//	@Success		200		{object}	http.Response
+//	@Failure		400		{object}	http.Response	"missing/invalid image or caption too long"
+//	@Failure		401		{object}	http.Response
+//	@Router			/post [post]
 func (h *V1) createPost(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -47,6 +61,19 @@ func (h *V1) createPost(c *gin.Context) {
 	h.handleResponse(c, apihttp.OK, nil)
 }
 
+// likePost godoc
+//
+//	@Summary		Like a post
+//	@Description	Idempotent: liking an already-liked post returns 200 without changing the like count.
+//	@Tags			posts
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			post_id	path		int	true	"Post ID"
+//	@Success		200		{object}	http.Response
+//	@Failure		400		{object}	http.Response	"invalid post_id"
+//	@Failure		401		{object}	http.Response
+//	@Failure		404		{object}	http.Response	"post not found"
+//	@Router			/post/{post_id}/like [post]
 func (h *V1) likePost(c *gin.Context) {
 	callerID, ok := currentUserID(c)
 	if !ok {
@@ -68,6 +95,20 @@ func (h *V1) likePost(c *gin.Context) {
 	h.handleResponse(c, apihttp.OK, nil)
 }
 
+// unlikePost godoc
+//
+//	@Summary		Unlike a post
+//	@Description	Removes a like. Returns 409 if the caller hadn't liked the post.
+//	@Tags			posts
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			post_id	path		int	true	"Post ID"
+//	@Success		200		{object}	http.Response
+//	@Failure		400		{object}	http.Response	"invalid post_id"
+//	@Failure		401		{object}	http.Response
+//	@Failure		404		{object}	http.Response	"post not found"
+//	@Failure		409		{object}	http.Response	"post is not liked"
+//	@Router			/post/{post_id}/like [delete]
 func (h *V1) unlikePost(c *gin.Context) {
 	callerID, ok := currentUserID(c)
 	if !ok {
@@ -89,6 +130,20 @@ func (h *V1) unlikePost(c *gin.Context) {
 	h.handleResponse(c, apihttp.OK, nil)
 }
 
+// searchPostsByTag godoc
+//
+//	@Summary		Search posts by hashtag
+//	@Description	Returns posts tagged with the given hashtag (leading # is optional), newest first. Unknown tags return an empty list.
+//	@Tags			search
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			tag			query		string	true	"Hashtag name, with or without leading #"
+//	@Param			page		query		int		false	"Page number (default 1)"
+//	@Param			per_page	query		int		false	"Items per page (default 10, max 100)"
+//	@Success		200			{object}	http.Response{data=response.HashtagPostList}
+//	@Failure		400			{object}	http.Response	"missing tag"
+//	@Failure		401			{object}	http.Response
+//	@Router			/search/posts [get]
 func (h *V1) searchPostsByTag(c *gin.Context) {
 	_, ok := currentUserID(c)
 	if !ok {
@@ -109,6 +164,19 @@ func (h *V1) searchPostsByTag(c *gin.Context) {
 	h.handleResponse(c, apihttp.OK, results)
 }
 
+// getPost godoc
+//
+//	@Summary		Get a single post
+//	@Description	Returns post details including like/comment counts and whether the caller has liked it.
+//	@Tags			posts
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			post_id	path		int	true	"Post ID"
+//	@Success		200		{object}	http.Response{data=response.PostDetail}
+//	@Failure		400		{object}	http.Response	"invalid post_id"
+//	@Failure		401		{object}	http.Response
+//	@Failure		404		{object}	http.Response	"post not found"
+//	@Router			/post/{post_id} [get]
 func (h *V1) getPost(c *gin.Context) {
 	callerID, ok := currentUserID(c)
 	if !ok {
@@ -131,6 +199,20 @@ func (h *V1) getPost(c *gin.Context) {
 	h.handleResponse(c, apihttp.OK, post)
 }
 
+// deletePost godoc
+//
+//	@Summary		Delete a post
+//	@Description	Soft-deletes the post and removes its image/thumbnail files. Only the post owner may delete it.
+//	@Tags			posts
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			post_id	path		int	true	"Post ID"
+//	@Success		200		{object}	http.Response
+//	@Failure		400		{object}	http.Response	"invalid post_id"
+//	@Failure		401		{object}	http.Response
+//	@Failure		403		{object}	http.Response	"not the post owner"
+//	@Failure		404		{object}	http.Response	"post not found"
+//	@Router			/post/{post_id} [delete]
 func (h *V1) deletePost(c *gin.Context) {
 	callerID, ok := currentUserID(c)
 	if !ok {
@@ -152,6 +234,18 @@ func (h *V1) deletePost(c *gin.Context) {
 	h.handleResponse(c, apihttp.OK, nil)
 }
 
+// getFeed godoc
+//
+//	@Summary		Home feed
+//	@Description	Posts authored by users the caller follows (not the caller's own posts), newest first.
+//	@Tags			posts
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			page		query		int	false	"Page number (default 1)"
+//	@Param			per_page	query		int	false	"Items per page (default 10, max 100)"
+//	@Success		200			{object}	http.Response{data=response.Feed}
+//	@Failure		401			{object}	http.Response
+//	@Router			/feed [get]
 func (h *V1) getFeed(c *gin.Context) {
 	callerID, ok := currentUserID(c)
 	if !ok {

@@ -3,7 +3,10 @@ package restapi
 
 import (
 	"github.com/gin-gonic/gin"
+	swaggerfiles "github.com/swaggo/files"
+	ginswagger "github.com/swaggo/gin-swagger"
 
+	_ "mini-instagram/docs" // swagger docs, registered via init()
 	v1 "mini-instagram/internal/controller/restapi/v1"
 	"mini-instagram/internal/controller/restapi/v1/http"
 	"mini-instagram/internal/usecase"
@@ -23,6 +26,8 @@ func NewRouter(handler *gin.Engine, auth usecase.Auth, posts usecase.Post, comme
 	})
 
 	handler.Static("/media", st.FullPath(""))
+
+	handler.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 
 	api := handler.Group("/api/v1")
 	{
