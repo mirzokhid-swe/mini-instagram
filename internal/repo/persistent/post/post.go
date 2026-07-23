@@ -98,12 +98,13 @@ func (r *PostRepo) ListByUser(ctx context.Context, userID int64, limit, offset i
 
 func (r *PostRepo) Like(ctx context.Context, userID, postID int64) error {
 	return r.pool.WithinTx(ctx, func(tx pgx.Tx) error {
-		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM posts WHERE id = $1 AND deleted_at IS NULL)`, postID).Scan(&exists); err != nil {
-			return fmt.Errorf("check post exists: %w", err)
-		}
-		if !exists {
+		var ownerID int64
+		err := tx.QueryRow(ctx, `SELECT user_id FROM posts WHERE id = $1 AND deleted_at IS NULL`, postID).Scan(&ownerID)
+		if errors.Is(err, pgx.ErrNoRows) {
 			return entity.ErrPostNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("check post exists: %w", err)
 		}
 
 		tag, err := tx.Exec(ctx, `INSERT INTO likes (user_id, post_id) VALUES ($1, $2) ON CONFLICT (user_id, post_id) DO NOTHING`, userID, postID)
@@ -116,6 +117,15 @@ func (r *PostRepo) Like(ctx context.Context, userID, postID int64) error {
 
 		if _, err := tx.Exec(ctx, `UPDATE posts SET like_count = like_count + 1, updated_at = now() WHERE id = $1`, postID); err != nil {
 			return fmt.Errorf("increment like count: %w", err)
+		}
+
+		if ownerID != userID {
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO notifications (user_id, actor_id, action_type, post_id) VALUES ($1, $2, 'like', $3)`,
+				ownerID, userID, postID,
+			); err != nil {
+				return fmt.Errorf("insert like notification: %w", err)
+			}
 		}
 		return nil
 	})

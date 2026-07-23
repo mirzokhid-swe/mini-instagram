@@ -40,3 +40,9 @@ type Comment interface {
 	GetForDelete(ctx context.Context, commentID int64) (entity.CommentOwnership, error)
 	SoftDelete(ctx context.Context, commentID, postID int64) error
 }
+
+type Notification interface {
+	Count(ctx context.Context, userID int64) (int64, error)
+	List(ctx context.Context, userID int64, limit, offset int) ([]entity.Notification, error)
+	MarkRead(ctx context.Context, notificationID, userID int64) error
+}

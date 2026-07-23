@@ -117,19 +117,26 @@ func (r *UserRepo) IsFollowing(ctx context.Context, followerID, followingID int6
 }
 
 func (r *UserRepo) Follow(ctx context.Context, followerID, followingID int64) error {
-	_, err := r.pool.Pool.Exec(ctx,
-		`INSERT INTO follows (follower_id, following_id) VALUES ($1, $2)`,
-		followerID, followingID,
-	)
-	if err == nil {
-		return nil
-	}
+	return r.pool.WithinTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO follows (follower_id, following_id) VALUES ($1, $2)`,
+			followerID, followingID,
+		); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				return entity.ErrAlreadyFollowing
+			}
+			return fmt.Errorf("follow user: %w", err)
+		}
 
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return entity.ErrAlreadyFollowing
-	}
-	return fmt.Errorf("follow user: %w", err)
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO notifications (user_id, actor_id, action_type) VALUES ($1, $2, 'follow')`,
+			followingID, followerID,
+		); err != nil {
+			return fmt.Errorf("insert follow notification: %w", err)
+		}
+		return nil
+	})
 }
 
 func (r *UserRepo) Unfollow(ctx context.Context, followerID, followingID int64) error {
