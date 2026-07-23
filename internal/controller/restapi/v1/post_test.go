@@ -17,6 +17,7 @@ import (
 
 	"mini-instagram/internal/controller/restapi/v1/request"
 	"mini-instagram/internal/controller/restapi/v1/response"
+	"mini-instagram/internal/entity"
 	"mini-instagram/pkg/logger"
 	"mini-instagram/pkg/storage"
 )
@@ -24,6 +25,9 @@ import (
 type fakePostUseCase struct {
 	called bool
 	err    error
+
+	likeErr, unlikeErr             error
+	lastLikePostID, lastUnlikePost int64
 }
 
 func (f *fakePostUseCase) Create(ctx context.Context, input request.CreatePost) error {
@@ -33,6 +37,16 @@ func (f *fakePostUseCase) Create(ctx context.Context, input request.CreatePost) 
 
 func (f *fakePostUseCase) GetFeed(ctx context.Context, callerID int64, page, perPage int) (response.Feed, error) {
 	return response.Feed{}, nil
+}
+
+func (f *fakePostUseCase) Like(ctx context.Context, callerID, postID int64) error {
+	f.lastLikePostID = postID
+	return f.likeErr
+}
+
+func (f *fakePostUseCase) Unlike(ctx context.Context, callerID, postID int64) error {
+	f.lastUnlikePost = postID
+	return f.unlikeErr
 }
 
 func newTestPostHandler(uc *fakePostUseCase) (*gin.Engine, *storage.Storage) {
@@ -48,6 +62,8 @@ func newTestPostHandler(uc *fakePostUseCase) (*gin.Engine, *storage.Storage) {
 	})
 	{
 		auth.POST("/post", h.createPost)
+		auth.POST("/post/:post_id/like", h.likePost)
+		auth.DELETE("/post/:post_id/like", h.unlikePost)
 	}
 	return handler, st
 }
@@ -116,5 +132,67 @@ func TestCreatePostHandler_Unauthorized(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status 401, got %d", w.Code)
+	}
+}
+
+func TestLikePostHandler_Success(t *testing.T) {
+	uc := &fakePostUseCase{}
+	router, st := newTestPostHandler(uc)
+	defer os.RemoveAll(st.FullPath(""))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/post/42/like", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if uc.lastLikePostID != 42 {
+		t.Fatalf("expected post_id 42, got %d", uc.lastLikePostID)
+	}
+}
+
+func TestLikePostHandler_InvalidPostID(t *testing.T) {
+	uc := &fakePostUseCase{}
+	router, st := newTestPostHandler(uc)
+	defer os.RemoveAll(st.FullPath(""))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/post/not-a-number/like", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUnlikePostHandler_NotLiked(t *testing.T) {
+	uc := &fakePostUseCase{unlikeErr: entity.ErrNotLiked}
+	router, st := newTestPostHandler(uc)
+	defer os.RemoveAll(st.FullPath(""))
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/post/42/like", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected status 409, got %d: %s", w.Code, w.Body.String())
+	}
+	if uc.lastUnlikePost != 42 {
+		t.Fatalf("expected post_id 42, got %d", uc.lastUnlikePost)
+	}
+}
+
+func TestLikePostHandler_PostNotFound(t *testing.T) {
+	uc := &fakePostUseCase{likeErr: entity.ErrPostNotFound}
+	router, st := newTestPostHandler(uc)
+	defer os.RemoveAll(st.FullPath(""))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/post/42/like", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", w.Code, w.Body.String())
 	}
 }

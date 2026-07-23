@@ -81,6 +81,8 @@ func (f *fakePostRepo) ListByUser(ctx context.Context, userID int64, limit, offs
 	return nil, nil
 }
 func (f *fakePostRepo) CountFeed(ctx context.Context, callerID int64) (int64, error) { return 0, nil }
+func (f *fakePostRepo) Like(ctx context.Context, userID, postID int64) error         { return nil }
+func (f *fakePostRepo) Unlike(ctx context.Context, userID, postID int64) error       { return nil }
 func (f *fakePostRepo) ListFeed(ctx context.Context, callerID int64, limit, offset int) ([]entity.FeedPost, error) {
 	return nil, nil
 }

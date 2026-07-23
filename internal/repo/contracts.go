@@ -23,4 +23,6 @@ type Post interface {
 	ListByUser(ctx context.Context, userID int64, limit, offset int) ([]entity.Post, error)
 	CountFeed(ctx context.Context, callerID int64) (int64, error)
 	ListFeed(ctx context.Context, callerID int64, limit, offset int) ([]entity.FeedPost, error)
+	Like(ctx context.Context, userID, postID int64) error
+	Unlike(ctx context.Context, userID, postID int64) error
 }
