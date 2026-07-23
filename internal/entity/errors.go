@@ -7,6 +7,8 @@ var (
 	ErrEmailTaken         = errors.New("email already exists")
 	ErrUsernameTaken      = errors.New("username already exists")
 	ErrInvalidCredentials = errors.New("invalid email or password")
+	ErrPostNotFound       = errors.New("post not found")
+	ErrNotLiked           = errors.New("post is not liked")
 )
 
 // ValidationError marks an error as caused by invalid caller input, as

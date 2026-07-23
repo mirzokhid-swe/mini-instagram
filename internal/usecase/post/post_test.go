@@ -28,6 +28,10 @@ type fakePostRepo struct {
 
 	lastFeedLimit  int
 	lastFeedOffset int
+
+	likeErr, unlikeErr                 error
+	lastLikeUserID, lastLikePostID     int64
+	lastUnlikeUserID, lastUnlikePostID int64
 }
 
 func (f *fakePostRepo) Create(ctx context.Context, post entity.Post) (entity.Post, error) {
@@ -61,6 +65,16 @@ func (f *fakePostRepo) ListFeed(ctx context.Context, callerID int64, limit, offs
 	f.lastFeedLimit = limit
 	f.lastFeedOffset = offset
 	return f.feedPosts, nil
+}
+
+func (f *fakePostRepo) Like(ctx context.Context, userID, postID int64) error {
+	f.lastLikeUserID, f.lastLikePostID = userID, postID
+	return f.likeErr
+}
+
+func (f *fakePostRepo) Unlike(ctx context.Context, userID, postID int64) error {
+	f.lastUnlikeUserID, f.lastUnlikePostID = userID, postID
+	return f.unlikeErr
 }
 
 func newTestStorage(t *testing.T) *storage.Storage {
@@ -294,5 +308,49 @@ func TestGetFeed_RepoError(t *testing.T) {
 
 	if _, err := uc.GetFeed(context.Background(), 1, 1, 10); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestLike_Success(t *testing.T) {
+	repo := &fakePostRepo{}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	if err := uc.Like(context.Background(), 1, 2); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.lastLikeUserID != 1 || repo.lastLikePostID != 2 {
+		t.Fatalf("expected repo called with (1, 2), got (%d, %d)", repo.lastLikeUserID, repo.lastLikePostID)
+	}
+}
+
+func TestLike_PostNotFound(t *testing.T) {
+	repo := &fakePostRepo{likeErr: entity.ErrPostNotFound}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	err := uc.Like(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrPostNotFound) {
+		t.Fatalf("expected ErrPostNotFound, got %v", err)
+	}
+}
+
+func TestUnlike_Success(t *testing.T) {
+	repo := &fakePostRepo{}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	if err := uc.Unlike(context.Background(), 1, 2); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.lastUnlikeUserID != 1 || repo.lastUnlikePostID != 2 {
+		t.Fatalf("expected repo called with (1, 2), got (%d, %d)", repo.lastUnlikeUserID, repo.lastUnlikePostID)
+	}
+}
+
+func TestUnlike_NotLiked(t *testing.T) {
+	repo := &fakePostRepo{unlikeErr: entity.ErrNotLiked}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	err := uc.Unlike(context.Background(), 1, 2)
+	if !errors.Is(err, entity.ErrNotLiked) {
+		t.Fatalf("expected ErrNotLiked, got %v", err)
 	}
 }

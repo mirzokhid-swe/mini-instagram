@@ -47,6 +47,48 @@ func (h *V1) createPost(c *gin.Context) {
 	h.handleResponse(c, apihttp.OK, nil)
 }
 
+func (h *V1) likePost(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	postID, err := strconv.ParseInt(c.Param("post_id"), 10, 64)
+	if err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid post_id")
+		return
+	}
+
+	if err := h.posts.Like(c.Request.Context(), callerID, postID); err != nil {
+		h.handleUsecaseError(c, err, "like post failed", "user_id", callerID, "post_id", postID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, nil)
+}
+
+func (h *V1) unlikePost(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	postID, err := strconv.ParseInt(c.Param("post_id"), 10, 64)
+	if err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid post_id")
+		return
+	}
+
+	if err := h.posts.Unlike(c.Request.Context(), callerID, postID); err != nil {
+		h.handleUsecaseError(c, err, "unlike post failed", "user_id", callerID, "post_id", postID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, nil)
+}
+
 func (h *V1) getFeed(c *gin.Context) {
 	callerID, ok := currentUserID(c)
 	if !ok {

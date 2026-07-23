@@ -96,6 +96,56 @@ func (r *PostRepo) ListByUser(ctx context.Context, userID int64, limit, offset i
 	return posts, nil
 }
 
+func (r *PostRepo) Like(ctx context.Context, userID, postID int64) error {
+	return r.pool.WithinTx(ctx, func(tx pgx.Tx) error {
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM posts WHERE id = $1 AND deleted_at IS NULL)`, postID).Scan(&exists); err != nil {
+			return fmt.Errorf("check post exists: %w", err)
+		}
+		if !exists {
+			return entity.ErrPostNotFound
+		}
+
+		tag, err := tx.Exec(ctx, `INSERT INTO likes (user_id, post_id) VALUES ($1, $2) ON CONFLICT (user_id, post_id) DO NOTHING`, userID, postID)
+		if err != nil {
+			return fmt.Errorf("insert like: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return nil
+		}
+
+		if _, err := tx.Exec(ctx, `UPDATE posts SET like_count = like_count + 1, updated_at = now() WHERE id = $1`, postID); err != nil {
+			return fmt.Errorf("increment like count: %w", err)
+		}
+		return nil
+	})
+}
+
+func (r *PostRepo) Unlike(ctx context.Context, userID, postID int64) error {
+	return r.pool.WithinTx(ctx, func(tx pgx.Tx) error {
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM posts WHERE id = $1 AND deleted_at IS NULL)`, postID).Scan(&exists); err != nil {
+			return fmt.Errorf("check post exists: %w", err)
+		}
+		if !exists {
+			return entity.ErrPostNotFound
+		}
+
+		tag, err := tx.Exec(ctx, `DELETE FROM likes WHERE user_id = $1 AND post_id = $2`, userID, postID)
+		if err != nil {
+			return fmt.Errorf("delete like: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return entity.ErrNotLiked
+		}
+
+		if _, err := tx.Exec(ctx, `UPDATE posts SET like_count = GREATEST(like_count - 1, 0), updated_at = now() WHERE id = $1`, postID); err != nil {
+			return fmt.Errorf("decrement like count: %w", err)
+		}
+		return nil
+	})
+}
+
 func (r *PostRepo) CountFeed(ctx context.Context, callerID int64) (int64, error) {
 	const query = `
 		SELECT COUNT(*)

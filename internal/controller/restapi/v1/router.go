@@ -50,15 +50,17 @@ func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, user
 	protected := api.Group("/")
 	protected.Use(middleware.Auth(tokens))
 	{
-		protected.Group("/profile")
+		profile := protected.Group("/profile")
 		{
-			protected.GET("", h.getProfile)
-			protected.PUT("", h.editProfile)
+			profile.GET("", h.getProfile)
+			profile.PUT("", h.editProfile)
 		}
 
-		protected.Group("post")
+		postRoutes := protected.Group("/post")
 		{
-			protected.POST("", h.createPost)
+			postRoutes.POST("", h.createPost)
+			postRoutes.POST("/:post_id/like", h.likePost)
+			postRoutes.DELETE("/:post_id/like", h.unlikePost)
 		}
 
 		protected.GET("/feed", h.getFeed)

@@ -165,6 +165,20 @@ func (u *UseCase) GetFeed(ctx context.Context, callerID int64, page, perPage int
 	return response.Feed{Count: count, Items: items}, nil
 }
 
+func (u *UseCase) Like(ctx context.Context, callerID, postID int64) error {
+	if err := u.posts.Like(ctx, callerID, postID); err != nil {
+		return fmt.Errorf("like post: %w", err)
+	}
+	return nil
+}
+
+func (u *UseCase) Unlike(ctx context.Context, callerID, postID int64) error {
+	if err := u.posts.Unlike(ctx, callerID, postID); err != nil {
+		return fmt.Errorf("unlike post: %w", err)
+	}
+	return nil
+}
+
 func randomHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
