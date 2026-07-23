@@ -11,6 +11,9 @@ var (
 	ErrNotLiked           = errors.New("post is not liked")
 	ErrCommentNotFound    = errors.New("comment not found")
 	ErrForbidden          = errors.New("forbidden")
+	ErrSelfFollow         = errors.New("cannot follow yourself")
+	ErrAlreadyFollowing   = errors.New("already following")
+	ErrNotFollowing       = errors.New("not following")
 )
 
 // ValidationError marks an error as caused by invalid caller input, as

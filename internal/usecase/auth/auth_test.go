@@ -69,6 +69,14 @@ func (f *fakeUserRepo) IsFollowing(ctx context.Context, followerID, followingID 
 	return false, nil
 }
 
+func (f *fakeUserRepo) Follow(ctx context.Context, followerID, followingID int64) error {
+	return nil
+}
+
+func (f *fakeUserRepo) Unfollow(ctx context.Context, followerID, followingID int64) error {
+	return nil
+}
+
 func newTestUseCase(repo *fakeUserRepo) *UseCase {
 	return New(repo, jwtmanager.New("test-secret"), nopLogger{})
 }
