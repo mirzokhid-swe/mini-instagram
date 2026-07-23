@@ -15,10 +15,14 @@ type User interface {
 	Update(ctx context.Context, user entity.User) error
 	GetProfileStats(ctx context.Context, userID int64) (postsCount, followersCount, followingCount int64, err error)
 	IsFollowing(ctx context.Context, followerID, followingID int64) (bool, error)
+	Follow(ctx context.Context, followerID, followingID int64) error
+	Unfollow(ctx context.Context, followerID, followingID int64) error
+	CountSearch(ctx context.Context, likePattern string) (int64, error)
+	Search(ctx context.Context, likePattern, exactMatch string, limit, offset int) ([]entity.User, error)
 }
 
 type Post interface {
-	Create(ctx context.Context, post entity.Post) (entity.Post, error)
+	Create(ctx context.Context, post entity.Post, hashtags []string) (entity.Post, error)
 	CountByUser(ctx context.Context, userID int64) (int64, error)
 	ListByUser(ctx context.Context, userID int64, limit, offset int) ([]entity.Post, error)
 	CountFeed(ctx context.Context, callerID int64) (int64, error)
@@ -37,4 +41,15 @@ type Comment interface {
 	List(ctx context.Context, postID int64, limit, offset int) ([]entity.Comment, error)
 	GetForDelete(ctx context.Context, commentID int64) (entity.CommentOwnership, error)
 	SoftDelete(ctx context.Context, commentID, postID int64) error
+}
+
+type Hashtag interface {
+	CountByTag(ctx context.Context, tag string) (int64, error)
+	ListByTag(ctx context.Context, tag string, limit, offset int) ([]entity.HashtagPost, error)
+}
+
+type Notification interface {
+	Count(ctx context.Context, userID int64) (int64, error)
+	List(ctx context.Context, userID int64, limit, offset int) ([]entity.Notification, error)
+	MarkRead(ctx context.Context, notificationID, userID int64) error
 }

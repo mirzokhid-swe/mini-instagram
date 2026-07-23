@@ -21,23 +21,34 @@ func NewCommentRepo(pg *postgres.Postgres) *CommentRepo {
 
 func (r *CommentRepo) Create(ctx context.Context, comment entity.Comment) error {
 	return r.pool.WithinTx(ctx, func(tx pgx.Tx) error {
-		var exists bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM posts WHERE id = $1 AND deleted_at IS NULL)`, comment.PostID).Scan(&exists); err != nil {
-			return fmt.Errorf("check post exists: %w", err)
-		}
-		if !exists {
+		var ownerID int64
+		err := tx.QueryRow(ctx, `SELECT user_id FROM posts WHERE id = $1 AND deleted_at IS NULL`, comment.PostID).Scan(&ownerID)
+		if errors.Is(err, pgx.ErrNoRows) {
 			return entity.ErrPostNotFound
 		}
+		if err != nil {
+			return fmt.Errorf("check post exists: %w", err)
+		}
 
-		if _, err := tx.Exec(ctx,
-			`INSERT INTO comments (user_id, post_id, content) VALUES ($1, $2, $3)`,
+		var commentID int64
+		if err := tx.QueryRow(ctx,
+			`INSERT INTO comments (user_id, post_id, content) VALUES ($1, $2, $3) RETURNING id`,
 			comment.UserID, comment.PostID, comment.Content,
-		); err != nil {
+		).Scan(&commentID); err != nil {
 			return fmt.Errorf("insert comment: %w", err)
 		}
 
 		if _, err := tx.Exec(ctx, `UPDATE posts SET comment_count = comment_count + 1, updated_at = now() WHERE id = $1`, comment.PostID); err != nil {
 			return fmt.Errorf("increment comment count: %w", err)
+		}
+
+		if ownerID != comment.UserID {
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO notifications (user_id, actor_id, action_type, post_id, comment_id) VALUES ($1, $2, 'comment', $3, $4)`,
+				ownerID, comment.UserID, comment.PostID, commentID,
+			); err != nil {
+				return fmt.Errorf("insert comment notification: %w", err)
+			}
 		}
 		return nil
 	})

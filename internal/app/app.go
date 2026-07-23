@@ -13,11 +13,14 @@ import (
 	"mini-instagram/config"
 	"mini-instagram/internal/controller/restapi"
 	commentrepo "mini-instagram/internal/repo/persistent/comment"
+	hashtagrepo "mini-instagram/internal/repo/persistent/hashtag"
+	notificationrepo "mini-instagram/internal/repo/persistent/notification"
 	postrepo "mini-instagram/internal/repo/persistent/post"
 	userrepo "mini-instagram/internal/repo/persistent/user"
 	"mini-instagram/internal/usecase"
 	authusecase "mini-instagram/internal/usecase/auth"
 	commentusecase "mini-instagram/internal/usecase/comment"
+	notificationusecase "mini-instagram/internal/usecase/notification"
 	postusecase "mini-instagram/internal/usecase/post"
 	userusecase "mini-instagram/internal/usecase/user"
 	"mini-instagram/pkg/httpserver"
@@ -29,10 +32,11 @@ import (
 )
 
 type useCases struct {
-	auth     usecase.Auth
-	posts    usecase.Post
-	comments usecase.Comment
-	users    usecase.User
+	auth          usecase.Auth
+	posts         usecase.Post
+	comments      usecase.Comment
+	users         usecase.User
+	notifications usecase.Notification
 }
 
 type servers struct {
@@ -43,11 +47,14 @@ func initUseCases(pg *postgres.Postgres, cfg *config.Config, l logger.Interface,
 	userRepo := userrepo.NewUserRepo(pg)
 	postRepo := postrepo.NewPostRepo(pg)
 	commentRepo := commentrepo.NewCommentRepo(pg)
+	notificationRepo := notificationrepo.NewNotificationRepo(pg)
+	hashtagRepo := hashtagrepo.NewHashtagRepo(pg)
 	return useCases{
-		auth:     authusecase.New(userRepo, jwtmanager.New(cfg.JWT.Secret), l),
-		posts:    postusecase.New(postRepo, st, l),
-		comments: commentusecase.New(commentRepo),
-		users:    userusecase.New(userRepo, postRepo, st, l),
+		auth:          authusecase.New(userRepo, jwtmanager.New(cfg.JWT.Secret), l),
+		posts:         postusecase.New(postRepo, hashtagRepo, st, l),
+		comments:      commentusecase.New(commentRepo),
+		users:         userusecase.New(userRepo, postRepo, st, l),
+		notifications: notificationusecase.New(notificationRepo),
 	}
 }
 
@@ -55,7 +62,7 @@ func initServers(cfg *config.Config, uc useCases, l logger.Interface, st *storag
 	gin.SetMode(gin.ReleaseMode)
 	handler := gin.New()
 
-	restapi.NewRouter(handler, uc.auth, uc.posts, uc.comments, uc.users, tokens, l, st, redisClient)
+	restapi.NewRouter(handler, uc.auth, uc.posts, uc.comments, uc.users, uc.notifications, tokens, l, st, redisClient)
 
 	httpServer := httpserver.New(handler, httpserver.Port(cfg.HTTP.Port))
 

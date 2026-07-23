@@ -21,6 +21,7 @@ type Post interface {
 	Unlike(ctx context.Context, callerID, postID int64) error
 	GetByID(ctx context.Context, callerID, postID int64) (response.PostDetail, error)
 	Delete(ctx context.Context, callerID, postID int64) error
+	SearchByTag(ctx context.Context, tag string, page, perPage int) (response.HashtagPostList, error)
 }
 
 type Comment interface {
@@ -33,4 +34,12 @@ type User interface {
 	GetProfile(ctx context.Context, userID, callerID int64) (response.Profile, error)
 	GetUserPosts(ctx context.Context, userID int64, page, perPage int) (response.UserPosts, error)
 	UpdateProfile(ctx context.Context, input request.UpdateProfile) error
+	Follow(ctx context.Context, followerID, followingID int64) error
+	Unfollow(ctx context.Context, followerID, followingID int64) error
+	SearchUsers(ctx context.Context, query string, page, perPage int) (response.UserSearch, error)
+}
+
+type Notification interface {
+	List(ctx context.Context, userID int64, page, perPage int) (response.NotificationList, error)
+	MarkRead(ctx context.Context, notificationID, userID int64) error
 }

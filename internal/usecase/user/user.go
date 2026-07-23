@@ -19,10 +19,11 @@ import (
 )
 
 const (
-	DefaultPage    = 1
-	DefaultPerPage = 10
-	MaxPerPage     = 100
-	MaxAvatarSize  = 5 << 20 // 5 MB
+	DefaultPage          = 1
+	DefaultPerPage       = 10
+	MaxPerPage           = 100
+	MaxAvatarSize        = 5 << 20 // 5 MB
+	MaxSearchQueryLength = 32
 )
 
 type UseCase struct {
@@ -169,4 +170,84 @@ func (u *UseCase) UpdateProfile(ctx context.Context, input request.UpdateProfile
 	}
 
 	return nil
+}
+
+func (u *UseCase) Follow(ctx context.Context, followerID, followingID int64) error {
+	if followerID == followingID {
+		return entity.ErrSelfFollow
+	}
+
+	target, err := u.users.FindByID(ctx, followingID)
+	if err != nil {
+		return err
+	}
+	if !target.IsActive {
+		return entity.ErrNotFound
+	}
+
+	return u.users.Follow(ctx, followerID, followingID)
+}
+
+func (u *UseCase) Unfollow(ctx context.Context, followerID, followingID int64) error {
+	target, err := u.users.FindByID(ctx, followingID)
+	if err != nil {
+		return err
+	}
+	if !target.IsActive {
+		return entity.ErrNotFound
+	}
+
+	return u.users.Unfollow(ctx, followerID, followingID)
+}
+
+func (u *UseCase) SearchUsers(ctx context.Context, query string, page, perPage int) (response.UserSearch, error) {
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return response.UserSearch{}, entity.NewValidationError("q", "q is required")
+	}
+	if len(q) > MaxSearchQueryLength {
+		return response.UserSearch{}, entity.NewValidationError("q", fmt.Sprintf("q must be at most %d characters", MaxSearchQueryLength))
+	}
+
+	if page < 1 {
+		page = DefaultPage
+	}
+	if perPage < 1 {
+		perPage = DefaultPerPage
+	}
+	if perPage > MaxPerPage {
+		perPage = MaxPerPage
+	}
+	offset := (page - 1) * perPage
+
+	likePattern := escapeLike(q)
+
+	count, err := u.users.CountSearch(ctx, likePattern)
+	if err != nil {
+		return response.UserSearch{}, fmt.Errorf("count search users: %w", err)
+	}
+
+	users, err := u.users.Search(ctx, likePattern, strings.ToLower(q), perPage, offset)
+	if err != nil {
+		return response.UserSearch{}, fmt.Errorf("search users: %w", err)
+	}
+
+	items := make([]response.UserSearchItem, len(users))
+	for i, usr := range users {
+		items[i] = response.UserSearchItem{
+			UserID:     usr.ID,
+			Username:   usr.Username,
+			FullName:   usr.FullName,
+			AvatarPath: usr.AvatarPath,
+		}
+	}
+
+	return response.UserSearch{Count: count, Items: items}, nil
+}
+
+// escapeLike escapes LIKE/ILIKE pattern metacharacters so user input is
+// treated as a literal substring rather than a wildcard pattern.
+func escapeLike(s string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(s)
 }

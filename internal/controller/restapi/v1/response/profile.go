@@ -28,3 +28,17 @@ type UserPosts struct {
 	Count int64      `json:"count"`
 	Items []PostItem `json:"items"`
 }
+
+// UserSearchItem is a single user entry in a username search result.
+type UserSearchItem struct {
+	UserID     int64  `json:"user_id"`
+	Username   string `json:"username"`
+	FullName   string `json:"full_name"`
+	AvatarPath string `json:"avatar_path"`
+}
+
+// UserSearch is the paginated response for GET /search/users.
+type UserSearch struct {
+	Count int64            `json:"count"`
+	Items []UserSearchItem `json:"items"`
+}

@@ -15,13 +15,14 @@ import (
 
 // V1 -.
 type V1 struct {
-	auth     usecase.Auth
-	posts    usecase.Post
-	comments usecase.Comment
-	users    usecase.User
-	logger   logger.Interface
-	storage  *storage.Storage
-	redis    *redis.Client
+	auth          usecase.Auth
+	posts         usecase.Post
+	comments      usecase.Comment
+	users         usecase.User
+	notifications usecase.Notification
+	logger        logger.Interface
+	storage       *storage.Storage
+	redis         *redis.Client
 }
 
 func (h *V1) handleResponse(c *gin.Context, status http.Status, data interface{}) {
@@ -41,8 +42,8 @@ func (h *V1) handleError(c *gin.Context, status http.Status, message string) {
 }
 
 // NewRoutes -.
-func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, comments usecase.Comment, users usecase.User, tokens *jwtmanager.TokenManager, l logger.Interface, st *storage.Storage, redisClient *redis.Client) {
-	h := &V1{auth: auth, posts: posts, comments: comments, users: users, logger: l, storage: st, redis: redisClient}
+func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, comments usecase.Comment, users usecase.User, notifications usecase.Notification, tokens *jwtmanager.TokenManager, l logger.Interface, st *storage.Storage, redisClient *redis.Client) {
+	h := &V1{auth: auth, posts: posts, comments: comments, users: users, notifications: notifications, logger: l, storage: st, redis: redisClient}
 	authRoutes := api.Group("/auth")
 	authRoutes.POST("/sign-up", middleware.RateLimitByEmail(h.redis, "rl:signup:", h.logger), h.signUp)
 	authRoutes.POST("/login", middleware.RateLimitByEmail(h.redis, "rl:login:", h.logger), h.login)
@@ -76,6 +77,20 @@ func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, comm
 		{
 			users.GET("/:user_id", h.getUserProfile)
 			users.GET("/:user_id/posts", h.getUserPosts)
+			users.POST("/:user_id/follow", h.followUser)
+			users.DELETE("/:user_id/follow", h.unfollowUser)
+		}
+
+		notifications := protected.Group("/notifications")
+		{
+			notifications.GET("", h.listNotifications)
+			notifications.PUT("/:notification_id/read", h.markNotificationRead)
+		}
+
+		search := protected.Group("/search")
+		{
+			search.GET("/users", h.searchUsers)
+			search.GET("/posts", h.searchPostsByTag)
 		}
 	}
 }

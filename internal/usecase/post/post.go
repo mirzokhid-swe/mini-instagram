@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/microcosm-cc/bluemonday"
 
@@ -27,16 +29,45 @@ const (
 	DefaultPage      = 1
 	DefaultPerPage   = 10
 	MaxPerPage       = 100
+	MaxHashtags      = 30
+	MaxHashtagLength = 64
 )
 
+var hashtagPattern = regexp.MustCompile(`#([\p{L}\p{N}_]+)`)
+
 type UseCase struct {
-	posts  repo.Post
-	st     *storage.Storage
-	logger logger.Interface
+	posts    repo.Post
+	hashtags repo.Hashtag
+	st       *storage.Storage
+	logger   logger.Interface
 }
 
-func New(posts repo.Post, st *storage.Storage, logger logger.Interface) usecase.Post {
-	return &UseCase{posts: posts, st: st, logger: logger}
+func New(posts repo.Post, hashtags repo.Hashtag, st *storage.Storage, logger logger.Interface) usecase.Post {
+	return &UseCase{posts: posts, hashtags: hashtags, st: st, logger: logger}
+}
+
+// parseHashtags extracts, lowercases, and dedupes hashtags from a caption,
+// capping at MaxHashtags and skipping tags longer than MaxHashtagLength.
+func parseHashtags(caption string) []string {
+	matches := hashtagPattern.FindAllStringSubmatch(caption, -1)
+
+	seen := make(map[string]struct{})
+	tags := make([]string, 0, len(matches))
+	for _, m := range matches {
+		tag := strings.ToLower(m[1])
+		if len(tag) > MaxHashtagLength {
+			continue
+		}
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		tags = append(tags, tag)
+		if len(tags) >= MaxHashtags {
+			break
+		}
+	}
+	return tags
 }
 
 func (u *UseCase) Create(ctx context.Context, input request.CreatePost) error {
@@ -117,7 +148,7 @@ func (u *UseCase) Create(ctx context.Context, input request.CreatePost) error {
 		ImagePath:     imagePath,
 		ThumbnailPath: thumbnailPath,
 		Caption:       caption,
-	})
+	}, parseHashtags(caption))
 	if err != nil {
 		return fmt.Errorf("create post: %w", err)
 	}
@@ -226,6 +257,50 @@ func (u *UseCase) Delete(ctx context.Context, callerID, postID int64) error {
 		}
 	}
 	return nil
+}
+
+func (u *UseCase) SearchByTag(ctx context.Context, tag string, page, perPage int) (response.HashtagPostList, error) {
+	tag = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(tag), "#"))
+	if tag == "" {
+		return response.HashtagPostList{}, entity.NewValidationError("tag", "tag is required")
+	}
+
+	if page < 1 {
+		page = DefaultPage
+	}
+	if perPage < 1 {
+		perPage = DefaultPerPage
+	}
+	if perPage > MaxPerPage {
+		perPage = MaxPerPage
+	}
+	offset := (page - 1) * perPage
+
+	count, err := u.hashtags.CountByTag(ctx, tag)
+	if err != nil {
+		return response.HashtagPostList{}, fmt.Errorf("count posts by hashtag: %w", err)
+	}
+
+	posts, err := u.hashtags.ListByTag(ctx, tag, perPage, offset)
+	if err != nil {
+		return response.HashtagPostList{}, fmt.Errorf("list posts by hashtag: %w", err)
+	}
+
+	items := make([]response.HashtagPostItem, len(posts))
+	for i, p := range posts {
+		items[i] = response.HashtagPostItem{
+			PostID:        p.ID,
+			UserID:        p.UserID,
+			Username:      p.Username,
+			ThumbnailPath: p.ThumbnailPath,
+			Caption:       p.Caption,
+			LikesCount:    p.LikeCount,
+			CommentsCount: p.CommentCount,
+			CreatedAt:     p.CreatedAt,
+		}
+	}
+
+	return response.HashtagPostList{Count: count, Items: items}, nil
 }
 
 func randomHex(n int) string {

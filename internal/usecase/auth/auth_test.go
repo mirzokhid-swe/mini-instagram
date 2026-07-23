@@ -69,6 +69,22 @@ func (f *fakeUserRepo) IsFollowing(ctx context.Context, followerID, followingID 
 	return false, nil
 }
 
+func (f *fakeUserRepo) Follow(ctx context.Context, followerID, followingID int64) error {
+	return nil
+}
+
+func (f *fakeUserRepo) Unfollow(ctx context.Context, followerID, followingID int64) error {
+	return nil
+}
+
+func (f *fakeUserRepo) CountSearch(ctx context.Context, likePattern string) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeUserRepo) Search(ctx context.Context, likePattern, exactMatch string, limit, offset int) ([]entity.User, error) {
+	return nil, nil
+}
+
 func newTestUseCase(repo *fakeUserRepo) *UseCase {
 	return New(repo, jwtmanager.New("test-secret"), nopLogger{})
 }

@@ -39,3 +39,16 @@ type PostDetail struct {
 	CommentCount int64
 	CreatedAt    time.Time
 }
+
+// HashtagPost is a post joined with its author's username, as returned by
+// the hashtag search.
+type HashtagPost struct {
+	ID            int64
+	UserID        int64
+	Username      string
+	Caption       string
+	ThumbnailPath string
+	LikeCount     int64
+	CommentCount  int64
+	CreatedAt     time.Time
+}

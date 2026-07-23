@@ -116,6 +116,43 @@ func (r *UserRepo) IsFollowing(ctx context.Context, followerID, followingID int6
 	return exists, nil
 }
 
+func (r *UserRepo) Follow(ctx context.Context, followerID, followingID int64) error {
+	return r.pool.WithinTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO follows (follower_id, following_id) VALUES ($1, $2)`,
+			followerID, followingID,
+		); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				return entity.ErrAlreadyFollowing
+			}
+			return fmt.Errorf("follow user: %w", err)
+		}
+
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO notifications (user_id, actor_id, action_type) VALUES ($1, $2, 'follow')`,
+			followingID, followerID,
+		); err != nil {
+			return fmt.Errorf("insert follow notification: %w", err)
+		}
+		return nil
+	})
+}
+
+func (r *UserRepo) Unfollow(ctx context.Context, followerID, followingID int64) error {
+	tag, err := r.pool.Pool.Exec(ctx,
+		`DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
+		followerID, followingID,
+	)
+	if err != nil {
+		return fmt.Errorf("unfollow user: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return entity.ErrNotFollowing
+	}
+	return nil
+}
+
 func (r *UserRepo) Update(ctx context.Context, user entity.User) error {
 	const query = `
 		UPDATE users
@@ -182,4 +219,43 @@ func (r *UserRepo) Create(ctx context.Context, user entity.User) (entity.User, e
 	}
 
 	return entity.User{}, fmt.Errorf("create user: %w", err)
+}
+
+func (r *UserRepo) CountSearch(ctx context.Context, likePattern string) (int64, error) {
+	const query = `SELECT COUNT(*) FROM users WHERE username ILIKE '%' || $1 || '%' ESCAPE '\' AND is_active = true`
+
+	var count int64
+	if err := r.pool.Pool.QueryRow(ctx, query, likePattern).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count search users: %w", err)
+	}
+	return count, nil
+}
+
+func (r *UserRepo) Search(ctx context.Context, likePattern, exactMatch string, limit, offset int) ([]entity.User, error) {
+	const query = `
+		SELECT id, username, full_name, avatar_path
+		FROM users
+		WHERE username ILIKE '%' || $1 || '%' ESCAPE '\' AND is_active = true
+		ORDER BY (username = $2) DESC, (username ILIKE $1 || '%' ESCAPE '\') DESC, username ASC
+		LIMIT $3 OFFSET $4`
+
+	rows, err := r.pool.Pool.Query(ctx, query, likePattern, exactMatch, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("search users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []entity.User
+	for rows.Next() {
+		var u entity.User
+		if err := rows.Scan(&u.ID, &u.Username, &u.FullName, &u.AvatarPath); err != nil {
+			return nil, fmt.Errorf("scan search user row: %w", err)
+		}
+		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate search user rows: %w", err)
+	}
+
+	return users, nil
 }
