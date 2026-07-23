@@ -32,7 +32,9 @@ type fakeUserRepo struct {
 	updateErr error
 }
 
-func (f *fakeUserRepo) EmailExists(ctx context.Context, email string) (bool, error) { return false, nil }
+func (f *fakeUserRepo) EmailExists(ctx context.Context, email string) (bool, error) {
+	return false, nil
+}
 
 func (f *fakeUserRepo) UsernameExists(ctx context.Context, username string) (bool, error) {
 	return f.usernameExists, f.existsErr
@@ -76,6 +78,10 @@ func (f *fakePostRepo) Create(ctx context.Context, post entity.Post) (entity.Pos
 }
 func (f *fakePostRepo) CountByUser(ctx context.Context, userID int64) (int64, error) { return 0, nil }
 func (f *fakePostRepo) ListByUser(ctx context.Context, userID int64, limit, offset int) ([]entity.Post, error) {
+	return nil, nil
+}
+func (f *fakePostRepo) CountFeed(ctx context.Context, callerID int64) (int64, error) { return 0, nil }
+func (f *fakePostRepo) ListFeed(ctx context.Context, callerID int64, limit, offset int) ([]entity.FeedPost, error) {
 	return nil, nil
 }
 

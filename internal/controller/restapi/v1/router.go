@@ -61,6 +61,8 @@ func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, user
 			protected.POST("", h.createPost)
 		}
 
+		protected.GET("/feed", h.getFeed)
+
 		users := protected.Group("/users")
 		{
 			users.GET("/:user_id", h.getUserProfile)

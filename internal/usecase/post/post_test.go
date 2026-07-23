@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"mini-instagram/internal/controller/restapi/v1/request"
 	"mini-instagram/internal/entity"
@@ -20,6 +21,13 @@ import (
 type fakePostRepo struct {
 	created entity.Post
 	err     error
+
+	feedCount int64
+	feedPosts []entity.FeedPost
+	feedErr   error
+
+	lastFeedLimit  int
+	lastFeedOffset int
 }
 
 func (f *fakePostRepo) Create(ctx context.Context, post entity.Post) (entity.Post, error) {
@@ -37,6 +45,22 @@ func (f *fakePostRepo) CountByUser(ctx context.Context, userID int64) (int64, er
 
 func (f *fakePostRepo) ListByUser(ctx context.Context, userID int64, limit, offset int) ([]entity.Post, error) {
 	return nil, nil
+}
+
+func (f *fakePostRepo) CountFeed(ctx context.Context, callerID int64) (int64, error) {
+	if f.feedErr != nil {
+		return 0, f.feedErr
+	}
+	return f.feedCount, nil
+}
+
+func (f *fakePostRepo) ListFeed(ctx context.Context, callerID int64, limit, offset int) ([]entity.FeedPost, error) {
+	if f.feedErr != nil {
+		return nil, f.feedErr
+	}
+	f.lastFeedLimit = limit
+	f.lastFeedOffset = offset
+	return f.feedPosts, nil
 }
 
 func newTestStorage(t *testing.T) *storage.Storage {
@@ -196,5 +220,79 @@ func TestCreatePost_CleanupOnRepoFailure(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("expected cleanup of image file, found %d entries", len(entries))
+	}
+}
+
+func TestGetFeed_Success(t *testing.T) {
+	now := time.Now()
+	repo := &fakePostRepo{
+		feedCount: 2,
+		feedPosts: []entity.FeedPost{
+			{ID: 2, UserID: 5, Username: "bob", Caption: "hi", ImagePath: "posts/b.jpg", LikeCount: 3, CommentCount: 1, CreatedAt: now},
+			{ID: 1, UserID: 5, Username: "bob", Caption: "hello", ImagePath: "posts/a.jpg", CreatedAt: now.Add(-time.Hour)},
+		},
+	}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	feed, err := uc.GetFeed(context.Background(), 1, 1, 10)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if feed.Count != 2 {
+		t.Fatalf("expected count 2, got %d", feed.Count)
+	}
+	if len(feed.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(feed.Items))
+	}
+	if feed.Items[0].PostID != 2 || feed.Items[0].Username != "bob" {
+		t.Fatalf("unexpected first item: %+v", feed.Items[0])
+	}
+	if feed.Items[0].LikesCount != 3 || feed.Items[0].CommentsCount != 1 {
+		t.Fatalf("expected counters to be carried over, got %+v", feed.Items[0])
+	}
+}
+
+func TestGetFeed_EmptyWhenFollowingNobody(t *testing.T) {
+	repo := &fakePostRepo{}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	feed, err := uc.GetFeed(context.Background(), 1, 1, 10)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if feed.Count != 0 || len(feed.Items) != 0 {
+		t.Fatalf("expected empty feed, got %+v", feed)
+	}
+}
+
+func TestGetFeed_PaginationClamping(t *testing.T) {
+	repo := &fakePostRepo{}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	if _, err := uc.GetFeed(context.Background(), 1, 0, 0); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.lastFeedLimit != DefaultPerPage || repo.lastFeedOffset != 0 {
+		t.Fatalf("expected defaults to apply, got limit=%d offset=%d", repo.lastFeedLimit, repo.lastFeedOffset)
+	}
+
+	if _, err := uc.GetFeed(context.Background(), 1, 3, 1000); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.lastFeedLimit != MaxPerPage {
+		t.Fatalf("expected per_page to be clamped to %d, got %d", MaxPerPage, repo.lastFeedLimit)
+	}
+	wantOffset := (3 - 1) * MaxPerPage
+	if repo.lastFeedOffset != wantOffset {
+		t.Fatalf("expected offset %d, got %d", wantOffset, repo.lastFeedOffset)
+	}
+}
+
+func TestGetFeed_RepoError(t *testing.T) {
+	repo := &fakePostRepo{feedErr: errors.New("db failure")}
+	uc := New(repo, newTestStorage(t), nopLogger{})
+
+	if _, err := uc.GetFeed(context.Background(), 1, 1, 10); err == nil {
+		t.Fatal("expected error")
 	}
 }

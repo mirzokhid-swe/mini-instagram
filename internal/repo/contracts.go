@@ -21,4 +21,6 @@ type Post interface {
 	Create(ctx context.Context, post entity.Post) (entity.Post, error)
 	CountByUser(ctx context.Context, userID int64) (int64, error)
 	ListByUser(ctx context.Context, userID int64, limit, offset int) ([]entity.Post, error)
+	CountFeed(ctx context.Context, callerID int64) (int64, error)
+	ListFeed(ctx context.Context, callerID int64, limit, offset int) ([]entity.FeedPost, error)
 }

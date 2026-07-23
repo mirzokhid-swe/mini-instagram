@@ -16,6 +16,7 @@ type Auth interface {
 
 type Post interface {
 	Create(ctx context.Context, input request.CreatePost) error
+	GetFeed(ctx context.Context, callerID int64, page, perPage int) (response.Feed, error)
 }
 
 type User interface {

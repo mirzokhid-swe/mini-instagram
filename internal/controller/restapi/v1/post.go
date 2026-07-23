@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 
 	apihttp "mini-instagram/internal/controller/restapi/v1/http"
@@ -43,4 +45,23 @@ func (h *V1) createPost(c *gin.Context) {
 	}
 
 	h.handleResponse(c, apihttp.OK, nil)
+}
+
+func (h *V1) getFeed(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
+
+	feed, err := h.posts.GetFeed(c.Request.Context(), callerID, page, perPage)
+	if err != nil {
+		h.handleUsecaseError(c, err, "get feed failed", "user_id", callerID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, feed)
 }

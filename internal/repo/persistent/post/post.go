@@ -95,3 +95,48 @@ func (r *PostRepo) ListByUser(ctx context.Context, userID int64, limit, offset i
 
 	return posts, nil
 }
+
+func (r *PostRepo) CountFeed(ctx context.Context, callerID int64) (int64, error) {
+	const query = `
+		SELECT COUNT(*)
+		FROM posts p
+		JOIN follows f ON f.following_id = p.user_id AND f.follower_id = $1
+		WHERE p.deleted_at IS NULL`
+
+	var count int64
+	if err := r.pool.Pool.QueryRow(ctx, query, callerID).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count feed: %w", err)
+	}
+	return count, nil
+}
+
+func (r *PostRepo) ListFeed(ctx context.Context, callerID int64, limit, offset int) ([]entity.FeedPost, error) {
+	const query = `
+		SELECT p.id, p.user_id, u.username, p.caption, p.image_path, p.like_count, p.comment_count, p.created_at
+		FROM posts p
+		JOIN follows f ON f.following_id = p.user_id AND f.follower_id = $1
+		JOIN users u ON u.id = p.user_id
+		WHERE p.deleted_at IS NULL
+		ORDER BY p.created_at DESC, p.id DESC
+		LIMIT $2 OFFSET $3`
+
+	rows, err := r.pool.Pool.Query(ctx, query, callerID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list feed: %w", err)
+	}
+	defer rows.Close()
+
+	var posts []entity.FeedPost
+	for rows.Next() {
+		var p entity.FeedPost
+		if err := rows.Scan(&p.ID, &p.UserID, &p.Username, &p.Caption, &p.ImagePath, &p.LikeCount, &p.CommentCount, &p.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan feed row: %w", err)
+		}
+		posts = append(posts, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate feed rows: %w", err)
+	}
+
+	return posts, nil
+}
