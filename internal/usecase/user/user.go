@@ -100,6 +100,8 @@ func (u *UseCase) GetUserPosts(ctx context.Context, userID int64, page, perPage 
 			PostID:        p.ID,
 			ThumbnailPath: p.ThumbnailPath,
 			Caption:       p.Caption,
+			LikesCount:    p.LikeCount,
+			CommentsCount: p.CommentCount,
 			CreatedAt:     p.CreatedAt,
 		}
 	}
@@ -200,7 +202,7 @@ func (u *UseCase) Unfollow(ctx context.Context, followerID, followingID int64) e
 	return u.users.Unfollow(ctx, followerID, followingID)
 }
 
-func (u *UseCase) SearchUsers(ctx context.Context, query string, page, perPage int) (response.UserSearch, error) {
+func (u *UseCase) SearchUsers(ctx context.Context, callerID int64, query string, page, perPage int) (response.UserSearch, error) {
 	q := strings.TrimSpace(query)
 	if q == "" {
 		return response.UserSearch{}, entity.NewValidationError("q", "q is required")
@@ -234,11 +236,20 @@ func (u *UseCase) SearchUsers(ctx context.Context, query string, page, perPage i
 
 	items := make([]response.UserSearchItem, len(users))
 	for i, usr := range users {
+		isFollowing := false
+		if callerID != usr.ID {
+			isFollowing, err = u.users.IsFollowing(ctx, callerID, usr.ID)
+			if err != nil {
+				return response.UserSearch{}, fmt.Errorf("check is following: %w", err)
+			}
+		}
+
 		items[i] = response.UserSearchItem{
-			UserID:     usr.ID,
-			Username:   usr.Username,
-			FullName:   usr.FullName,
-			AvatarPath: usr.AvatarPath,
+			UserID:      usr.ID,
+			Username:    usr.Username,
+			FullName:    usr.FullName,
+			AvatarPath:  usr.AvatarPath,
+			IsFollowing: isFollowing,
 		}
 	}
 

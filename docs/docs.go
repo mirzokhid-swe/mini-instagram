@@ -1501,12 +1501,29 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "http.FieldError": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "http.Response": {
             "type": "object",
             "properties": {
                 "data": {},
                 "description": {
                     "type": "string"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/http.FieldError"
+                    }
                 },
                 "status": {
                     "type": "string"
@@ -1725,8 +1742,14 @@ const docTemplate = `{
                 "caption": {
                     "type": "string"
                 },
+                "comments_count": {
+                    "type": "integer"
+                },
                 "created_at": {
                     "type": "string"
+                },
+                "likes_count": {
+                    "type": "integer"
                 },
                 "post_id": {
                     "type": "integer"
@@ -1804,6 +1827,9 @@ const docTemplate = `{
                 },
                 "full_name": {
                     "type": "string"
+                },
+                "is_following": {
+                    "type": "boolean"
                 },
                 "user_id": {
                     "type": "integer"

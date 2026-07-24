@@ -356,7 +356,7 @@ func TestSearchUsers_EmptyQuery(t *testing.T) {
 	users := &fakeUserRepo{}
 	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
 
-	_, err := uc.SearchUsers(context.Background(), "   ", 1, 10)
+	_, err := uc.SearchUsers(context.Background(), 1, "   ", 1, 10)
 	var vErr *entity.ValidationError
 	if !errors.As(err, &vErr) || vErr.Field != "q" {
 		t.Fatalf("expected validation error on field q, got %v", err)
@@ -367,7 +367,7 @@ func TestSearchUsers_TooLong(t *testing.T) {
 	users := &fakeUserRepo{}
 	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
 
-	_, err := uc.SearchUsers(context.Background(), strings.Repeat("a", 33), 1, 10)
+	_, err := uc.SearchUsers(context.Background(), 1, strings.Repeat("a", 33), 1, 10)
 	var vErr *entity.ValidationError
 	if !errors.As(err, &vErr) || vErr.Field != "q" {
 		t.Fatalf("expected validation error on field q, got %v", err)
@@ -378,7 +378,7 @@ func TestSearchUsers_EscapesWildcardsAndLowercasesExactMatch(t *testing.T) {
 	users := &fakeUserRepo{searchCount: 1, searchResults: []entity.User{{ID: 1, Username: "jane_doe", FullName: "Jane Doe"}}}
 	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
 
-	result, err := uc.SearchUsers(context.Background(), "Jane%_", 1, 10)
+	result, err := uc.SearchUsers(context.Background(), 1, "Jane%_", 1, 10)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

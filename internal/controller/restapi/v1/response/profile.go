@@ -20,6 +20,8 @@ type PostItem struct {
 	PostID        int64     `json:"post_id"`
 	ThumbnailPath string    `json:"thumbnail_path"`
 	Caption       string    `json:"caption"`
+	LikesCount    int64     `json:"likes_count"`
+	CommentsCount int64     `json:"comments_count"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
@@ -31,10 +33,11 @@ type UserPosts struct {
 
 // UserSearchItem is a single user entry in a username search result.
 type UserSearchItem struct {
-	UserID     int64  `json:"user_id"`
-	Username   string `json:"username"`
-	FullName   string `json:"full_name"`
-	AvatarPath string `json:"avatar_path"`
+	UserID      int64  `json:"user_id"`
+	Username    string `json:"username"`
+	FullName    string `json:"full_name"`
+	AvatarPath  string `json:"avatar_path"`
+	IsFollowing bool   `json:"is_following"`
 }
 
 // UserSearch is the paginated response for GET /search/users.
