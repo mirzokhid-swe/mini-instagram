@@ -98,6 +98,22 @@ func (f *fakeUserRepo) CountSearch(ctx context.Context, likePattern string) (int
 	return f.searchCount, f.searchErr
 }
 
+func (f *fakeUserRepo) CountFollowers(ctx context.Context, userID int64) (int64, error) {
+	return f.searchCount, f.searchErr
+}
+
+func (f *fakeUserRepo) ListFollowers(ctx context.Context, userID int64, limit, offset int) ([]entity.User, error) {
+	return f.searchResults, f.searchErr
+}
+
+func (f *fakeUserRepo) CountFollowing(ctx context.Context, userID int64) (int64, error) {
+	return f.searchCount, f.searchErr
+}
+
+func (f *fakeUserRepo) ListFollowing(ctx context.Context, userID int64, limit, offset int) ([]entity.User, error) {
+	return f.searchResults, f.searchErr
+}
+
 func (f *fakeUserRepo) Search(ctx context.Context, likePattern, exactMatch string, limit, offset int) ([]entity.User, error) {
 	f.searchArgs.likePattern = likePattern
 	f.searchArgs.exactMatch = exactMatch
@@ -390,6 +406,60 @@ func TestSearchUsers_EscapesWildcardsAndLowercasesExactMatch(t *testing.T) {
 	}
 	if users.searchArgs.exactMatch != "jane%_" {
 		t.Fatalf("expected lowercased exact match, got %q", users.searchArgs.exactMatch)
+	}
+}
+
+func TestListFollowers_UserNotFound(t *testing.T) {
+	users := &fakeUserRepo{byIDErr: entity.ErrNotFound}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	_, err := uc.ListFollowers(context.Background(), 1, 2, 1, 10)
+	if !errors.Is(err, entity.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestListFollowers_Success(t *testing.T) {
+	users := &fakeUserRepo{
+		byID:          entity.User{ID: 2, IsActive: true},
+		searchCount:   1,
+		searchResults: []entity.User{{ID: 3, Username: "alice"}},
+	}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	result, err := uc.ListFollowers(context.Background(), 1, 2, 1, 10)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Count != 1 || len(result.Items) != 1 || result.Items[0].Username != "alice" {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestListFollowing_UserNotFound(t *testing.T) {
+	users := &fakeUserRepo{byIDErr: entity.ErrNotFound}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	_, err := uc.ListFollowing(context.Background(), 1, 2, 1, 10)
+	if !errors.Is(err, entity.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestListFollowing_Success(t *testing.T) {
+	users := &fakeUserRepo{
+		byID:          entity.User{ID: 2, IsActive: true},
+		searchCount:   1,
+		searchResults: []entity.User{{ID: 3, Username: "bob"}},
+	}
+	uc := New(users, &fakePostRepo{}, newTestStorage(t), nopLogger{})
+
+	result, err := uc.ListFollowing(context.Background(), 1, 2, 1, 10)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Count != 1 || len(result.Items) != 1 || result.Items[0].Username != "bob" {
+		t.Fatalf("unexpected result: %+v", result)
 	}
 }
 

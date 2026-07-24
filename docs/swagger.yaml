@@ -1140,6 +1140,98 @@ paths:
       summary: Follow a user
       tags:
       - follow
+  /users/{user_id}/followers:
+    get:
+      description: Paginated list of accounts that follow the given user.
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Items per page (default 10, max 100)
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.UserSearch'
+              type: object
+        "400":
+          description: invalid user_id
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: user not found
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: List a user's followers
+      tags:
+      - profile
+  /users/{user_id}/following:
+    get:
+      description: Paginated list of accounts the given user follows.
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Items per page (default 10, max 100)
+        in: query
+        name: per_page
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/http.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/response.UserSearch'
+              type: object
+        "400":
+          description: invalid user_id
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: user not found
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: List who a user follows
+      tags:
+      - profile
   /users/{user_id}/posts:
     get:
       description: Paginated list of a user's posts, newest first, excluding soft-deleted

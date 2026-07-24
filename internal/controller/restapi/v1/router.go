@@ -91,6 +91,8 @@ func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, comm
 		{
 			users.GET("/:user_id", h.getUserProfile)
 			users.GET("/:user_id/posts", h.getUserPosts)
+			users.GET("/:user_id/followers", h.listFollowers)
+			users.GET("/:user_id/following", h.listFollowing)
 			users.POST("/:user_id/follow", h.followUser)
 			users.DELETE("/:user_id/follow", h.unfollowUser)
 		}

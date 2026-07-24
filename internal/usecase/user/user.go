@@ -211,16 +211,7 @@ func (u *UseCase) SearchUsers(ctx context.Context, callerID int64, query string,
 		return response.UserSearch{}, entity.NewValidationError("q", fmt.Sprintf("q must be at most %d characters", MaxSearchQueryLength))
 	}
 
-	if page < 1 {
-		page = DefaultPage
-	}
-	if perPage < 1 {
-		perPage = DefaultPerPage
-	}
-	if perPage > MaxPerPage {
-		perPage = MaxPerPage
-	}
-	offset := (page - 1) * perPage
+	page, perPage, offset := normalizePage(page, perPage)
 
 	likePattern := escapeLike(q)
 
@@ -234,23 +225,9 @@ func (u *UseCase) SearchUsers(ctx context.Context, callerID int64, query string,
 		return response.UserSearch{}, fmt.Errorf("search users: %w", err)
 	}
 
-	items := make([]response.UserSearchItem, len(users))
-	for i, usr := range users {
-		isFollowing := false
-		if callerID != usr.ID {
-			isFollowing, err = u.users.IsFollowing(ctx, callerID, usr.ID)
-			if err != nil {
-				return response.UserSearch{}, fmt.Errorf("check is following: %w", err)
-			}
-		}
-
-		items[i] = response.UserSearchItem{
-			UserID:      usr.ID,
-			Username:    usr.Username,
-			FullName:    usr.FullName,
-			AvatarPath:  usr.AvatarPath,
-			IsFollowing: isFollowing,
-		}
+	items, err := u.toUserSearchItems(ctx, callerID, users)
+	if err != nil {
+		return response.UserSearch{}, err
 	}
 
 	return response.UserSearch{Count: count, Items: items}, nil
@@ -261,4 +238,98 @@ func (u *UseCase) SearchUsers(ctx context.Context, callerID int64, query string,
 func escapeLike(s string) string {
 	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	return replacer.Replace(s)
+}
+
+func (u *UseCase) ListFollowers(ctx context.Context, callerID, userID int64, page, perPage int) (response.UserSearch, error) {
+	target, err := u.users.FindByID(ctx, userID)
+	if err != nil {
+		return response.UserSearch{}, err
+	}
+	if !target.IsActive {
+		return response.UserSearch{}, entity.ErrNotFound
+	}
+
+	page, perPage, offset := normalizePage(page, perPage)
+
+	count, err := u.users.CountFollowers(ctx, userID)
+	if err != nil {
+		return response.UserSearch{}, fmt.Errorf("count followers: %w", err)
+	}
+
+	users, err := u.users.ListFollowers(ctx, userID, perPage, offset)
+	if err != nil {
+		return response.UserSearch{}, fmt.Errorf("list followers: %w", err)
+	}
+
+	items, err := u.toUserSearchItems(ctx, callerID, users)
+	if err != nil {
+		return response.UserSearch{}, err
+	}
+
+	return response.UserSearch{Count: count, Items: items}, nil
+}
+
+func (u *UseCase) ListFollowing(ctx context.Context, callerID, userID int64, page, perPage int) (response.UserSearch, error) {
+	target, err := u.users.FindByID(ctx, userID)
+	if err != nil {
+		return response.UserSearch{}, err
+	}
+	if !target.IsActive {
+		return response.UserSearch{}, entity.ErrNotFound
+	}
+
+	page, perPage, offset := normalizePage(page, perPage)
+
+	count, err := u.users.CountFollowing(ctx, userID)
+	if err != nil {
+		return response.UserSearch{}, fmt.Errorf("count following: %w", err)
+	}
+
+	users, err := u.users.ListFollowing(ctx, userID, perPage, offset)
+	if err != nil {
+		return response.UserSearch{}, fmt.Errorf("list following: %w", err)
+	}
+
+	items, err := u.toUserSearchItems(ctx, callerID, users)
+	if err != nil {
+		return response.UserSearch{}, err
+	}
+
+	return response.UserSearch{Count: count, Items: items}, nil
+}
+
+func (u *UseCase) toUserSearchItems(ctx context.Context, callerID int64, users []entity.User) ([]response.UserSearchItem, error) {
+	items := make([]response.UserSearchItem, len(users))
+	for i, usr := range users {
+		isFollowing := false
+		if callerID != usr.ID {
+			following, err := u.users.IsFollowing(ctx, callerID, usr.ID)
+			if err != nil {
+				return nil, fmt.Errorf("check is following: %w", err)
+			}
+			isFollowing = following
+		}
+
+		items[i] = response.UserSearchItem{
+			UserID:      usr.ID,
+			Username:    usr.Username,
+			FullName:    usr.FullName,
+			AvatarPath:  usr.AvatarPath,
+			IsFollowing: isFollowing,
+		}
+	}
+	return items, nil
+}
+
+func normalizePage(page, perPage int) (int, int, int) {
+	if page < 1 {
+		page = DefaultPage
+	}
+	if perPage < 1 {
+		perPage = DefaultPerPage
+	}
+	if perPage > MaxPerPage {
+		perPage = MaxPerPage
+	}
+	return page, perPage, (page - 1) * perPage
 }
