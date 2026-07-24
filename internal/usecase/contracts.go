@@ -39,6 +39,8 @@ type User interface {
 	Follow(ctx context.Context, followerID, followingID int64) error
 	Unfollow(ctx context.Context, followerID, followingID int64) error
 	SearchUsers(ctx context.Context, callerID int64, query string, page, perPage int) (response.UserSearch, error)
+	ListFollowers(ctx context.Context, callerID, userID int64, page, perPage int) (response.UserSearch, error)
+	ListFollowing(ctx context.Context, callerID, userID int64, page, perPage int) (response.UserSearch, error)
 }
 
 type Notification interface {

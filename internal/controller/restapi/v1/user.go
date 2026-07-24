@@ -113,6 +113,86 @@ func (h *V1) getUserPosts(c *gin.Context) {
 	h.handleResponse(c, apihttp.OK, posts)
 }
 
+// listFollowers godoc
+//
+//	@Summary		List a user's followers
+//	@Description	Paginated list of accounts that follow the given user.
+//	@Tags			profile
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			user_id		path		int	true	"User ID"
+//	@Param			page		query		int	false	"Page number (default 1)"
+//	@Param			per_page	query		int	false	"Items per page (default 10, max 100)"
+//	@Success		200			{object}	http.Response{data=response.UserSearch}
+//	@Failure		400			{object}	http.Response	"invalid user_id"
+//	@Failure		401			{object}	http.Response
+//	@Failure		404			{object}	http.Response	"user not found"
+//	@Router			/users/{user_id}/followers [get]
+func (h *V1) listFollowers(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	if err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid user_id")
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
+
+	results, err := h.users.ListFollowers(c.Request.Context(), callerID, userID, page, perPage)
+	if err != nil {
+		h.handleUsecaseError(c, err, "list followers failed", "user_id", userID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, results)
+}
+
+// listFollowing godoc
+//
+//	@Summary		List who a user follows
+//	@Description	Paginated list of accounts the given user follows.
+//	@Tags			profile
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			user_id		path		int	true	"User ID"
+//	@Param			page		query		int	false	"Page number (default 1)"
+//	@Param			per_page	query		int	false	"Items per page (default 10, max 100)"
+//	@Success		200			{object}	http.Response{data=response.UserSearch}
+//	@Failure		400			{object}	http.Response	"invalid user_id"
+//	@Failure		401			{object}	http.Response
+//	@Failure		404			{object}	http.Response	"user not found"
+//	@Router			/users/{user_id}/following [get]
+func (h *V1) listFollowing(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	if err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid user_id")
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
+
+	results, err := h.users.ListFollowing(c.Request.Context(), callerID, userID, page, perPage)
+	if err != nil {
+		h.handleUsecaseError(c, err, "list following failed", "user_id", userID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, results)
+}
+
 // editProfile godoc
 //
 //	@Summary		Edit own profile

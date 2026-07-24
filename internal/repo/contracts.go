@@ -19,6 +19,10 @@ type User interface {
 	Unfollow(ctx context.Context, followerID, followingID int64) error
 	CountSearch(ctx context.Context, likePattern string) (int64, error)
 	Search(ctx context.Context, likePattern, exactMatch string, limit, offset int) ([]entity.User, error)
+	CountFollowers(ctx context.Context, userID int64) (int64, error)
+	ListFollowers(ctx context.Context, userID int64, limit, offset int) ([]entity.User, error)
+	CountFollowing(ctx context.Context, userID int64) (int64, error)
+	ListFollowing(ctx context.Context, userID int64, limit, offset int) ([]entity.User, error)
 }
 
 type Post interface {

@@ -259,3 +259,69 @@ func (r *UserRepo) Search(ctx context.Context, likePattern, exactMatch string, l
 
 	return users, nil
 }
+
+func (r *UserRepo) CountFollowers(ctx context.Context, userID int64) (int64, error) {
+	const query = `SELECT COUNT(*) FROM follows WHERE following_id = $1`
+
+	var count int64
+	if err := r.pool.Pool.QueryRow(ctx, query, userID).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count followers: %w", err)
+	}
+	return count, nil
+}
+
+func (r *UserRepo) ListFollowers(ctx context.Context, userID int64, limit, offset int) ([]entity.User, error) {
+	const query = `
+		SELECT u.id, u.username, u.full_name, u.avatar_path
+		FROM users u
+		JOIN follows f ON f.follower_id = u.id
+		WHERE f.following_id = $1 AND u.is_active = true
+		ORDER BY f.created_at DESC
+		LIMIT $2 OFFSET $3`
+
+	return r.queryUsers(ctx, query, userID, limit, offset)
+}
+
+func (r *UserRepo) CountFollowing(ctx context.Context, userID int64) (int64, error) {
+	const query = `SELECT COUNT(*) FROM follows WHERE follower_id = $1`
+
+	var count int64
+	if err := r.pool.Pool.QueryRow(ctx, query, userID).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count following: %w", err)
+	}
+	return count, nil
+}
+
+func (r *UserRepo) ListFollowing(ctx context.Context, userID int64, limit, offset int) ([]entity.User, error) {
+	const query = `
+		SELECT u.id, u.username, u.full_name, u.avatar_path
+		FROM users u
+		JOIN follows f ON f.following_id = u.id
+		WHERE f.follower_id = $1 AND u.is_active = true
+		ORDER BY f.created_at DESC
+		LIMIT $2 OFFSET $3`
+
+	return r.queryUsers(ctx, query, userID, limit, offset)
+}
+
+func (r *UserRepo) queryUsers(ctx context.Context, query string, userID int64, limit, offset int) ([]entity.User, error) {
+	rows, err := r.pool.Pool.Query(ctx, query, userID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("query users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []entity.User
+	for rows.Next() {
+		var u entity.User
+		if err := rows.Scan(&u.ID, &u.Username, &u.FullName, &u.AvatarPath); err != nil {
+			return nil, fmt.Errorf("scan user row: %w", err)
+		}
+		users = append(users, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate user rows: %w", err)
+	}
+
+	return users, nil
+}
