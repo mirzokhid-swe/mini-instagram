@@ -126,7 +126,7 @@ func (f *fakePostRepo) GetForDelete(ctx context.Context, postID int64) (entity.P
 	return entity.Post{}, nil
 }
 func (f *fakePostRepo) SoftDelete(ctx context.Context, postID int64) error { return nil }
-func (f *fakePostRepo) UpdateCaption(ctx context.Context, postID int64, caption string) error {
+func (f *fakePostRepo) UpdateCaption(ctx context.Context, postID int64, caption string, hashtags []string) error {
 	return nil
 }
 func (f *fakePostRepo) ListFeed(ctx context.Context, callerID int64, limit, offset int) ([]entity.FeedPost, error) {
