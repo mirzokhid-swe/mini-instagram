@@ -256,7 +256,7 @@ func (h *V1) unfollowUser(c *gin.Context) {
 //	@Failure		401			{object}	http.Response
 //	@Router			/search/users [get]
 func (h *V1) searchUsers(c *gin.Context) {
-	_, ok := currentUserID(c)
+	callerID, ok := currentUserID(c)
 	if !ok {
 		h.handleError(c, apihttp.Unauthorized, "unauthorized")
 		return
@@ -266,7 +266,7 @@ func (h *V1) searchUsers(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "10"))
 
-	results, err := h.users.SearchUsers(c.Request.Context(), query, page, perPage)
+	results, err := h.users.SearchUsers(c.Request.Context(), callerID, query, page, perPage)
 	if err != nil {
 		h.handleUsecaseError(c, err, "search users failed", "query", query)
 		return

@@ -1,10 +1,21 @@
 basePath: /api/v1
 definitions:
+  http.FieldError:
+    properties:
+      field:
+        type: string
+      message:
+        type: string
+    type: object
   http.Response:
     properties:
       data: {}
       description:
         type: string
+      errors:
+        items:
+          $ref: '#/definitions/http.FieldError'
+        type: array
       status:
         type: string
     type: object
@@ -146,8 +157,12 @@ definitions:
     properties:
       caption:
         type: string
+      comments_count:
+        type: integer
       created_at:
         type: string
+      likes_count:
+        type: integer
       post_id:
         type: integer
       thumbnail_path:
@@ -198,6 +213,8 @@ definitions:
         type: string
       full_name:
         type: string
+      is_following:
+        type: boolean
       user_id:
         type: integer
       username:

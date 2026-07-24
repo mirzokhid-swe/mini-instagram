@@ -90,7 +90,7 @@ func (r *PostRepo) CountByUser(ctx context.Context, userID int64) (int64, error)
 
 func (r *PostRepo) ListByUser(ctx context.Context, userID int64, limit, offset int) ([]entity.Post, error) {
 	const query = `
-		SELECT id, thumbnail_path, caption, created_at
+		SELECT id, thumbnail_path, caption, like_count, comment_count, created_at
 		FROM posts
 		WHERE user_id = $1 AND deleted_at IS NULL
 		ORDER BY created_at DESC
@@ -105,7 +105,7 @@ func (r *PostRepo) ListByUser(ctx context.Context, userID int64, limit, offset i
 	var posts []entity.Post
 	for rows.Next() {
 		var p entity.Post
-		if err := rows.Scan(&p.ID, &p.ThumbnailPath, &p.Caption, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.ThumbnailPath, &p.Caption, &p.LikeCount, &p.CommentCount, &p.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan post row: %w", err)
 		}
 		posts = append(posts, p)
