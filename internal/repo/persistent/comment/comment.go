@@ -112,6 +112,15 @@ func (r *CommentRepo) GetForDelete(ctx context.Context, commentID int64) (entity
 	return o, nil
 }
 
+func (r *CommentRepo) UpdateContent(ctx context.Context, commentID int64, content string) error {
+	const query = `UPDATE comments SET content = $1, updated_at = now() WHERE id = $2`
+
+	if _, err := r.pool.Pool.Exec(ctx, query, content, commentID); err != nil {
+		return fmt.Errorf("update comment content: %w", err)
+	}
+	return nil
+}
+
 func (r *CommentRepo) SoftDelete(ctx context.Context, commentID, postID int64) error {
 	return r.pool.WithinTx(ctx, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `UPDATE comments SET deleted_at = now(), updated_at = now() WHERE id = $1`, commentID); err != nil {

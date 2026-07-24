@@ -159,7 +159,7 @@ func (h *V1) editProfile(c *gin.Context) {
 		input.Avatar = file
 		input.AvatarHeader = header
 	} else if !errors.Is(err, http.ErrMissingFile) {
-		h.handleError(c, apihttp.BadRequest, "invalid avatar upload")
+		h.handleFieldError(c, apihttp.BadRequest, "avatar", "invalid avatar upload")
 		return
 	}
 

@@ -90,11 +90,11 @@ func parseHashtags(caption string) []string {
 func (u *UseCase) Create(ctx context.Context, input request.CreatePost) error {
 	caption := bluemonday.StrictPolicy().Sanitize(input.Caption)
 	if len(caption) > MaxCaptionLength {
-		return fmt.Errorf("caption exceeds %d characters", MaxCaptionLength)
+		return entity.NewValidationError("caption", fmt.Sprintf("caption exceeds %d characters", MaxCaptionLength))
 	}
 
 	if err := imgutil.Validate(input.Header, imgutil.DefaultMaxSize); err != nil {
-		return err
+		return entity.NewValidationError("image", err.Error())
 	}
 
 	buf := make([]byte, 512)
@@ -106,7 +106,7 @@ func (u *UseCase) Create(ctx context.Context, input request.CreatePost) error {
 
 	contentType := http.DetectContentType(buf)
 	if !imgutil.IsImage(contentType) {
-		return errors.New("file must be an image")
+		return entity.NewValidationError("image", "file must be an image")
 	}
 
 	if seeker, ok := input.File.(io.Seeker); ok {
@@ -496,6 +496,26 @@ func (u *UseCase) Delete(ctx context.Context, callerID, postID int64) error {
 		if err := u.st.Delete(post.ThumbnailPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			u.logger.Error("failed to delete post thumbnail", "path", post.ThumbnailPath, "error", err)
 		}
+	}
+	return nil
+}
+
+func (u *UseCase) Edit(ctx context.Context, callerID, postID int64, caption string) error {
+	post, err := u.posts.GetForDelete(ctx, postID)
+	if err != nil {
+		return fmt.Errorf("get post for edit: %w", err)
+	}
+	if post.UserID != callerID {
+		return entity.ErrForbidden
+	}
+
+	caption = bluemonday.StrictPolicy().Sanitize(caption)
+	if len(caption) > MaxCaptionLength {
+		return entity.NewValidationError("caption", fmt.Sprintf("caption exceeds %d characters", MaxCaptionLength))
+	}
+
+	if err := u.posts.UpdateCaption(ctx, postID, caption); err != nil {
+		return fmt.Errorf("update post caption: %w", err)
 	}
 	return nil
 }

@@ -20,15 +20,15 @@ func (h *V1) handleUsecaseError(c *gin.Context, err error, logMsg string, logFie
 
 	switch {
 	case errors.As(err, &vErr):
-		h.handleError(c, apihttp.BadRequest, vErr.Message)
+		h.handleFieldError(c, apihttp.BadRequest, vErr.Field, vErr.Message)
 	case errors.Is(err, entity.ErrNotFound):
 		h.handleError(c, apihttp.NOT_FOUND, "user not found")
 	case errors.Is(err, entity.ErrPostNotFound):
 		h.handleError(c, apihttp.NOT_FOUND, "post not found")
 	case errors.Is(err, entity.ErrUsernameTaken):
-		h.handleError(c, apihttp.Conflict, "username already exists")
+		h.handleFieldError(c, apihttp.Conflict, "username", "username already exists")
 	case errors.Is(err, entity.ErrEmailTaken):
-		h.handleError(c, apihttp.Conflict, "email already exists")
+		h.handleFieldError(c, apihttp.Conflict, "email", "email already exists")
 	case errors.Is(err, entity.ErrInvalidCredentials):
 		h.handleError(c, apihttp.Unauthorized, "invalid email or password")
 	case errors.Is(err, entity.ErrNotLiked):

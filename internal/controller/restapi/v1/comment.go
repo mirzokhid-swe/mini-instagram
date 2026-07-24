@@ -128,3 +128,50 @@ func (h *V1) deleteComment(c *gin.Context) {
 
 	h.handleResponse(c, apihttp.OK, nil)
 }
+
+type editCommentRequest struct {
+	Content string `json:"content"`
+}
+
+// editComment godoc
+//
+//	@Summary		Edit a comment
+//	@Description	Updates a comment's content. Allowed for the comment author or the post owner.
+//	@Tags			comments
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			comment_id	path		int					true	"Comment ID"
+//	@Param			request		body		editCommentRequest	true	"Updated content"
+//	@Success		200			{object}	http.Response
+//	@Failure		400			{object}	http.Response	"invalid comment_id, invalid request body, or empty content"
+//	@Failure		401			{object}	http.Response
+//	@Failure		403			{object}	http.Response	"not the comment author or post owner"
+//	@Failure		404			{object}	http.Response	"comment not found"
+//	@Router			/comments/{comment_id} [put]
+func (h *V1) editComment(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	commentID, err := strconv.ParseInt(c.Param("comment_id"), 10, 64)
+	if err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid comment_id")
+		return
+	}
+
+	var body editCommentRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.comments.Edit(c.Request.Context(), callerID, commentID, body.Content); err != nil {
+		h.handleUsecaseError(c, err, "edit comment failed", "user_id", callerID, "comment_id", commentID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, nil)
+}

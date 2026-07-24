@@ -22,6 +22,10 @@ type fakeCommentUseCase struct {
 	listErr      error
 	deleteErr    error
 	lastDeleteID int64
+
+	editErr         error
+	lastEditID      int64
+	lastEditContent string
 }
 
 func (f *fakeCommentUseCase) Create(ctx context.Context, callerID, postID int64, content string) error {
@@ -38,6 +42,11 @@ func (f *fakeCommentUseCase) Delete(ctx context.Context, callerID, commentID int
 	return f.deleteErr
 }
 
+func (f *fakeCommentUseCase) Edit(ctx context.Context, callerID, commentID int64, content string) error {
+	f.lastEditID, f.lastEditContent = commentID, content
+	return f.editErr
+}
+
 func newTestCommentHandler(uc *fakeCommentUseCase) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	handler := gin.New()
@@ -50,6 +59,7 @@ func newTestCommentHandler(uc *fakeCommentUseCase) *gin.Engine {
 	{
 		auth.POST("/post/:post_id/comments", h.createComment)
 		auth.GET("/post/:post_id/comments", h.listComments)
+		auth.PUT("/comments/:comment_id", h.editComment)
 		auth.DELETE("/comments/:comment_id", h.deleteComment)
 	}
 	return handler
@@ -124,6 +134,65 @@ func TestListCommentsHandler_Success(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestEditCommentHandler_Success(t *testing.T) {
+	uc := &fakeCommentUseCase{}
+	router := newTestCommentHandler(uc)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/comments/7", strings.NewReader(`{"content":"updated"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if uc.lastEditID != 7 || uc.lastEditContent != "updated" {
+		t.Fatalf("unexpected edit call: comment_id=%d content=%q", uc.lastEditID, uc.lastEditContent)
+	}
+}
+
+func TestEditCommentHandler_Forbidden(t *testing.T) {
+	uc := &fakeCommentUseCase{editErr: entity.ErrForbidden}
+	router := newTestCommentHandler(uc)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/comments/7", strings.NewReader(`{"content":"updated"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected status 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestEditCommentHandler_NotFound(t *testing.T) {
+	uc := &fakeCommentUseCase{editErr: entity.ErrCommentNotFound}
+	router := newTestCommentHandler(uc)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/comments/7", strings.NewReader(`{"content":"updated"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestEditCommentHandler_InvalidID(t *testing.T) {
+	uc := &fakeCommentUseCase{}
+	router := newTestCommentHandler(uc)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/comments/abc", strings.NewReader(`{"content":"updated"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

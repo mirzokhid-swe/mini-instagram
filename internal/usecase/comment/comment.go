@@ -94,3 +94,26 @@ func (u *UseCase) Delete(ctx context.Context, callerID, commentID int64) error {
 	}
 	return nil
 }
+
+func (u *UseCase) Edit(ctx context.Context, callerID, commentID int64, content string) error {
+	ownership, err := u.comments.GetForDelete(ctx, commentID)
+	if err != nil {
+		return fmt.Errorf("get comment for edit: %w", err)
+	}
+	if ownership.AuthorID != callerID && ownership.PostOwnerID != callerID {
+		return entity.ErrForbidden
+	}
+
+	content = strings.TrimSpace(bluemonday.StrictPolicy().Sanitize(content))
+	if content == "" {
+		return entity.NewValidationError("content", "content is required")
+	}
+	if len(content) > MaxContentLength {
+		return entity.NewValidationError("content", fmt.Sprintf("content must be at most %d characters", MaxContentLength))
+	}
+
+	if err := u.comments.UpdateContent(ctx, commentID, content); err != nil {
+		return fmt.Errorf("update comment content: %w", err)
+	}
+	return nil
+}

@@ -208,6 +208,16 @@ definitions:
       content:
         type: string
     type: object
+  v1.editCommentRequest:
+    properties:
+      content:
+        type: string
+    type: object
+  v1.editPostRequest:
+    properties:
+      caption:
+        type: string
+    type: object
 host: localhost:8080
 info:
   contact: {}
@@ -380,6 +390,51 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete a comment
+      tags:
+      - comments
+    put:
+      consumes:
+      - application/json
+      description: Updates a comment's content. Allowed for the comment author or
+        the post owner.
+      parameters:
+      - description: Comment ID
+        in: path
+        name: comment_id
+        required: true
+        type: integer
+      - description: Updated content
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/v1.editCommentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.Response'
+        "400":
+          description: invalid comment_id, invalid request body, or empty content
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "403":
+          description: not the comment author or post owner
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: comment not found
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Edit a comment
       tags:
       - comments
   /feed:
@@ -594,6 +649,50 @@ paths:
       security:
       - BearerAuth: []
       summary: Get a single post
+      tags:
+      - posts
+    put:
+      consumes:
+      - application/json
+      description: Updates the post's caption. Only the post owner may edit it.
+      parameters:
+      - description: Post ID
+        in: path
+        name: post_id
+        required: true
+        type: integer
+      - description: Updated caption
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/v1.editPostRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/http.Response'
+        "400":
+          description: invalid post_id or invalid request body
+          schema:
+            $ref: '#/definitions/http.Response'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http.Response'
+        "403":
+          description: not the post owner
+          schema:
+            $ref: '#/definitions/http.Response'
+        "404":
+          description: post not found
+          schema:
+            $ref: '#/definitions/http.Response'
+      security:
+      - BearerAuth: []
+      summary: Edit a post
       tags:
       - posts
   /post/{post_id}/comments:

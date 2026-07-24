@@ -44,6 +44,10 @@ type fakePostRepo struct {
 	softDeleteErr error
 	lastSoftDelID int64
 
+	updateCaptionErr     error
+	lastUpdateCaptionID  int64
+	lastUpdateCaptionVal string
+
 	ownerID    int64
 	ownerErr   error
 	likeCounts map[int64]int64
@@ -111,6 +115,12 @@ func (f *fakePostRepo) GetForDelete(ctx context.Context, postID int64) (entity.P
 func (f *fakePostRepo) SoftDelete(ctx context.Context, postID int64) error {
 	f.lastSoftDelID = postID
 	return f.softDeleteErr
+}
+
+func (f *fakePostRepo) UpdateCaption(ctx context.Context, postID int64, caption string) error {
+	f.lastUpdateCaptionID = postID
+	f.lastUpdateCaptionVal = caption
+	return f.updateCaptionErr
 }
 
 func (f *fakePostRepo) GetOwner(ctx context.Context, postID int64) (int64, error) {
@@ -503,6 +513,52 @@ func TestDelete_NotFound(t *testing.T) {
 	err := uc.Delete(context.Background(), 1, 2)
 	if !errors.Is(err, entity.ErrPostNotFound) {
 		t.Fatalf("expected ErrPostNotFound, got %v", err)
+	}
+}
+
+func TestEdit_Success(t *testing.T) {
+	repo := &fakePostRepo{getForDeleteP: entity.Post{ID: 2, UserID: 1}}
+	uc := New(repo, &fakeHashtagRepo{}, nil, newTestStorage(t), nopLogger{})
+
+	if err := uc.Edit(context.Background(), 1, 2, "new caption"); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.lastUpdateCaptionID != 2 || repo.lastUpdateCaptionVal != "new caption" {
+		t.Fatalf("unexpected update call: id=%d caption=%q", repo.lastUpdateCaptionID, repo.lastUpdateCaptionVal)
+	}
+}
+
+func TestEdit_NotOwner(t *testing.T) {
+	repo := &fakePostRepo{getForDeleteP: entity.Post{ID: 2, UserID: 99}}
+	uc := New(repo, &fakeHashtagRepo{}, nil, newTestStorage(t), nopLogger{})
+
+	err := uc.Edit(context.Background(), 1, 2, "new caption")
+	if !errors.Is(err, entity.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+	if repo.lastUpdateCaptionID != 0 {
+		t.Fatal("expected update not to be called")
+	}
+}
+
+func TestEdit_NotFound(t *testing.T) {
+	repo := &fakePostRepo{getForDelErr: entity.ErrPostNotFound}
+	uc := New(repo, &fakeHashtagRepo{}, nil, newTestStorage(t), nopLogger{})
+
+	err := uc.Edit(context.Background(), 1, 2, "new caption")
+	if !errors.Is(err, entity.ErrPostNotFound) {
+		t.Fatalf("expected ErrPostNotFound, got %v", err)
+	}
+}
+
+func TestEdit_CaptionTooLong(t *testing.T) {
+	repo := &fakePostRepo{getForDeleteP: entity.Post{ID: 2, UserID: 1}}
+	uc := New(repo, &fakeHashtagRepo{}, nil, newTestStorage(t), nopLogger{})
+
+	var vErr *entity.ValidationError
+	err := uc.Edit(context.Background(), 1, 2, strings.Repeat("a", MaxCaptionLength+1))
+	if !errors.As(err, &vErr) {
+		t.Fatalf("expected ValidationError, got %v", err)
 	}
 }
 

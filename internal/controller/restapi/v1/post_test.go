@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -33,6 +34,10 @@ type fakePostUseCase struct {
 	getByIDErr    error
 	deleteErr     error
 	lastDeletePID int64
+
+	editErr         error
+	lastEditPID     int64
+	lastEditCaption string
 }
 
 func (f *fakePostUseCase) Create(ctx context.Context, input request.CreatePost) error {
@@ -63,6 +68,12 @@ func (f *fakePostUseCase) Delete(ctx context.Context, callerID, postID int64) er
 	return f.deleteErr
 }
 
+func (f *fakePostUseCase) Edit(ctx context.Context, callerID, postID int64, caption string) error {
+	f.lastEditPID = postID
+	f.lastEditCaption = caption
+	return f.editErr
+}
+
 func (f *fakePostUseCase) SearchByTag(ctx context.Context, tag string, page, perPage int) (response.HashtagPostList, error) {
 	return response.HashtagPostList{}, nil
 }
@@ -81,6 +92,7 @@ func newTestPostHandler(uc *fakePostUseCase) (*gin.Engine, *storage.Storage) {
 	{
 		auth.POST("/post", h.createPost)
 		auth.GET("/post/:post_id", h.getPost)
+		auth.PUT("/post/:post_id", h.editPost)
 		auth.DELETE("/post/:post_id", h.deletePost)
 		auth.POST("/post/:post_id/like", h.likePost)
 		auth.DELETE("/post/:post_id/like", h.unlikePost)
@@ -256,6 +268,69 @@ func TestGetPostHandler_NotFound(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected status 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestEditPostHandler_Success(t *testing.T) {
+	uc := &fakePostUseCase{}
+	router, st := newTestPostHandler(uc)
+	defer os.RemoveAll(st.FullPath(""))
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/post/42", strings.NewReader(`{"caption":"updated"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if uc.lastEditPID != 42 || uc.lastEditCaption != "updated" {
+		t.Fatalf("unexpected edit call: post_id=%d caption=%q", uc.lastEditPID, uc.lastEditCaption)
+	}
+}
+
+func TestEditPostHandler_Forbidden(t *testing.T) {
+	uc := &fakePostUseCase{editErr: entity.ErrForbidden}
+	router, st := newTestPostHandler(uc)
+	defer os.RemoveAll(st.FullPath(""))
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/post/42", strings.NewReader(`{"caption":"updated"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected status 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestEditPostHandler_NotFound(t *testing.T) {
+	uc := &fakePostUseCase{editErr: entity.ErrPostNotFound}
+	router, st := newTestPostHandler(uc)
+	defer os.RemoveAll(st.FullPath(""))
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/post/42", strings.NewReader(`{"caption":"updated"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestEditPostHandler_InvalidPostID(t *testing.T) {
+	uc := &fakePostUseCase{}
+	router, st := newTestPostHandler(uc)
+	defer os.RemoveAll(st.FullPath(""))
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/post/abc", strings.NewReader(`{"caption":"updated"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

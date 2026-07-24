@@ -21,6 +21,7 @@ type Post interface {
 	Unlike(ctx context.Context, callerID, postID int64) error
 	GetByID(ctx context.Context, callerID, postID int64) (response.PostDetail, error)
 	Delete(ctx context.Context, callerID, postID int64) error
+	Edit(ctx context.Context, callerID, postID int64, caption string) error
 	SearchByTag(ctx context.Context, tag string, page, perPage int) (response.HashtagPostList, error)
 }
 
@@ -28,6 +29,7 @@ type Comment interface {
 	Create(ctx context.Context, callerID, postID int64, content string) error
 	List(ctx context.Context, postID int64, page, perPage int) (response.CommentList, error)
 	Delete(ctx context.Context, callerID, commentID int64) error
+	Edit(ctx context.Context, callerID, commentID int64, content string) error
 }
 
 type User interface {

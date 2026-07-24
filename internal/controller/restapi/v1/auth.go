@@ -94,7 +94,7 @@ func (h *V1) signUp(c *gin.Context) {
 	avatarPath, err := h.saveAvatar(c)
 	if err != nil {
 		h.logger.Error("signup avatar upload failed", "email", req.Email, "error", err)
-		h.handleError(c, apihttp.BadRequest, err.Error())
+		h.handleFieldError(c, apihttp.BadRequest, "avatar", err.Error())
 		return
 	}
 

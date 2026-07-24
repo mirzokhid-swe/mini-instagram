@@ -41,6 +41,15 @@ func (h *V1) handleError(c *gin.Context, status http.Status, message string) {
 	})
 }
 
+func (h *V1) handleFieldError(c *gin.Context, status http.Status, field, message string) {
+	c.JSON(status.Code, http.Response{
+		Status:      status.Status,
+		Description: message,
+		Data:        nil,
+		Errors:      []http.FieldError{{Field: field, Message: message}},
+	})
+}
+
 // NewRoutes -.
 func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, comments usecase.Comment, users usecase.User, notifications usecase.Notification, tokens *jwtmanager.TokenManager, l logger.Interface, st *storage.Storage, redisClient *redis.Client) {
 	h := &V1{auth: auth, posts: posts, comments: comments, users: users, notifications: notifications, logger: l, storage: st, redis: redisClient}
@@ -62,6 +71,7 @@ func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, comm
 		{
 			postRoutes.POST("", h.createPost)
 			postRoutes.GET("/:post_id", h.getPost)
+			postRoutes.PUT("/:post_id", h.editPost)
 			postRoutes.DELETE("/:post_id", h.deletePost)
 			postRoutes.POST("/:post_id/like", h.likePost)
 			postRoutes.DELETE("/:post_id/like", h.unlikePost)
@@ -69,7 +79,11 @@ func NewRoutes(api *gin.RouterGroup, auth usecase.Auth, posts usecase.Post, comm
 			postRoutes.GET("/:post_id/comments", h.listComments)
 		}
 
-		protected.DELETE("/comments/:comment_id", h.deleteComment)
+		commentRoutes := protected.Group("/comments")
+		{
+			commentRoutes.PUT("/:comment_id", h.editComment)
+			commentRoutes.DELETE("/:comment_id", h.deleteComment)
+		}
 
 		protected.GET("/feed", h.getFeed)
 

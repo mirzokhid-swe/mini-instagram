@@ -28,6 +28,10 @@ type fakeCommentRepo struct {
 	softDeleteErr    error
 	lastSoftDelID    int64
 	lastSoftDelPostI int64
+
+	updateContentErr     error
+	lastUpdateContentID  int64
+	lastUpdateContentVal string
 }
 
 func (f *fakeCommentRepo) Create(ctx context.Context, comment entity.Comment) error {
@@ -51,6 +55,12 @@ func (f *fakeCommentRepo) GetForDelete(ctx context.Context, commentID int64) (en
 func (f *fakeCommentRepo) SoftDelete(ctx context.Context, commentID, postID int64) error {
 	f.lastSoftDelID, f.lastSoftDelPostI = commentID, postID
 	return f.softDeleteErr
+}
+
+func (f *fakeCommentRepo) UpdateContent(ctx context.Context, commentID int64, content string) error {
+	f.lastUpdateContentID = commentID
+	f.lastUpdateContentVal = content
+	return f.updateContentErr
 }
 
 func TestCreate_Success(t *testing.T) {
@@ -179,5 +189,60 @@ func TestDelete_NotFound(t *testing.T) {
 	err := uc.Delete(context.Background(), 1, 5)
 	if !errors.Is(err, entity.ErrCommentNotFound) {
 		t.Fatalf("expected ErrCommentNotFound, got %v", err)
+	}
+}
+
+func TestEdit_ByAuthor(t *testing.T) {
+	repo := &fakeCommentRepo{ownership: entity.CommentOwnership{CommentID: 5, PostID: 2, AuthorID: 1, PostOwnerID: 9}}
+	uc := New(repo)
+
+	if err := uc.Edit(context.Background(), 1, 5, "updated"); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if repo.lastUpdateContentID != 5 || repo.lastUpdateContentVal != "updated" {
+		t.Fatalf("unexpected update call: id=%d content=%q", repo.lastUpdateContentID, repo.lastUpdateContentVal)
+	}
+}
+
+func TestEdit_ByPostOwner(t *testing.T) {
+	repo := &fakeCommentRepo{ownership: entity.CommentOwnership{CommentID: 5, PostID: 2, AuthorID: 1, PostOwnerID: 9}}
+	uc := New(repo)
+
+	if err := uc.Edit(context.Background(), 9, 5, "updated"); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestEdit_Forbidden(t *testing.T) {
+	repo := &fakeCommentRepo{ownership: entity.CommentOwnership{CommentID: 5, PostID: 2, AuthorID: 1, PostOwnerID: 9}}
+	uc := New(repo)
+
+	err := uc.Edit(context.Background(), 42, 5, "updated")
+	if !errors.Is(err, entity.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+	if repo.lastUpdateContentID != 0 {
+		t.Fatal("expected update not to be called")
+	}
+}
+
+func TestEdit_NotFound(t *testing.T) {
+	repo := &fakeCommentRepo{ownershipErr: entity.ErrCommentNotFound}
+	uc := New(repo)
+
+	err := uc.Edit(context.Background(), 1, 5, "updated")
+	if !errors.Is(err, entity.ErrCommentNotFound) {
+		t.Fatalf("expected ErrCommentNotFound, got %v", err)
+	}
+}
+
+func TestEdit_EmptyContent(t *testing.T) {
+	repo := &fakeCommentRepo{ownership: entity.CommentOwnership{CommentID: 5, PostID: 2, AuthorID: 1, PostOwnerID: 9}}
+	uc := New(repo)
+
+	var vErr *entity.ValidationError
+	err := uc.Edit(context.Background(), 1, 5, "   ")
+	if !errors.As(err, &vErr) {
+		t.Fatalf("expected ValidationError, got %v", err)
 	}
 }

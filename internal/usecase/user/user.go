@@ -138,7 +138,7 @@ func (u *UseCase) UpdateProfile(ctx context.Context, input request.UpdateProfile
 
 	if input.Avatar != nil {
 		if err := image.Validate(input.AvatarHeader, MaxAvatarSize); err != nil {
-			return err
+			return entity.NewValidationError("avatar", err.Error())
 		}
 		savedPath, err := image.Save(input.Avatar, input.AvatarHeader, u.st, "avatars", MaxAvatarSize)
 		if err != nil {

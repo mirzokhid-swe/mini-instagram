@@ -233,6 +233,15 @@ func (r *PostRepo) SoftDelete(ctx context.Context, postID int64) error {
 	return nil
 }
 
+func (r *PostRepo) UpdateCaption(ctx context.Context, postID int64, caption string) error {
+	const query = `UPDATE posts SET caption = $1, updated_at = now() WHERE id = $2`
+
+	if _, err := r.pool.Pool.Exec(ctx, query, caption, postID); err != nil {
+		return fmt.Errorf("update post caption: %w", err)
+	}
+	return nil
+}
+
 func (r *PostRepo) CountFeed(ctx context.Context, callerID int64) (int64, error) {
 	const query = `
 		SELECT COUNT(*)

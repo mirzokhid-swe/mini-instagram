@@ -48,7 +48,7 @@ func (h *V1) createPost(c *gin.Context) {
 	file, header, err := c.Request.FormFile("image")
 	if err != nil {
 		h.logger.Info("create post missing image", "error", err)
-		h.handleError(c, apihttp.BadRequest, "image is required")
+		h.handleFieldError(c, apihttp.BadRequest, "image", "image is required")
 		return
 	}
 	defer file.Close()
@@ -228,6 +228,53 @@ func (h *V1) deletePost(c *gin.Context) {
 
 	if err := h.posts.Delete(c.Request.Context(), callerID, postID); err != nil {
 		h.handleUsecaseError(c, err, "delete post failed", "user_id", callerID, "post_id", postID)
+		return
+	}
+
+	h.handleResponse(c, apihttp.OK, nil)
+}
+
+type editPostRequest struct {
+	Caption string `json:"caption"`
+}
+
+// editPost godoc
+//
+//	@Summary		Edit a post
+//	@Description	Updates the post's caption. Only the post owner may edit it.
+//	@Tags			posts
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			post_id	path		int					true	"Post ID"
+//	@Param			request	body		editPostRequest	true	"Updated caption"
+//	@Success		200		{object}	http.Response
+//	@Failure		400		{object}	http.Response	"invalid post_id or invalid request body"
+//	@Failure		401		{object}	http.Response
+//	@Failure		403		{object}	http.Response	"not the post owner"
+//	@Failure		404		{object}	http.Response	"post not found"
+//	@Router			/post/{post_id} [put]
+func (h *V1) editPost(c *gin.Context) {
+	callerID, ok := currentUserID(c)
+	if !ok {
+		h.handleError(c, apihttp.Unauthorized, "unauthorized")
+		return
+	}
+
+	postID, err := strconv.ParseInt(c.Param("post_id"), 10, 64)
+	if err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid post_id")
+		return
+	}
+
+	var body editPostRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		h.handleError(c, apihttp.BadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.posts.Edit(c.Request.Context(), callerID, postID, body.Caption); err != nil {
+		h.handleUsecaseError(c, err, "edit post failed", "user_id", callerID, "post_id", postID)
 		return
 	}
 
