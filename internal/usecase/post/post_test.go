@@ -44,9 +44,10 @@ type fakePostRepo struct {
 	softDeleteErr error
 	lastSoftDelID int64
 
-	updateCaptionErr     error
-	lastUpdateCaptionID  int64
-	lastUpdateCaptionVal string
+	updateCaptionErr      error
+	lastUpdateCaptionID   int64
+	lastUpdateCaptionVal  string
+	lastUpdateCaptionTags []string
 
 	ownerID    int64
 	ownerErr   error
@@ -117,9 +118,10 @@ func (f *fakePostRepo) SoftDelete(ctx context.Context, postID int64) error {
 	return f.softDeleteErr
 }
 
-func (f *fakePostRepo) UpdateCaption(ctx context.Context, postID int64, caption string) error {
+func (f *fakePostRepo) UpdateCaption(ctx context.Context, postID int64, caption string, hashtags []string) error {
 	f.lastUpdateCaptionID = postID
 	f.lastUpdateCaptionVal = caption
+	f.lastUpdateCaptionTags = hashtags
 	return f.updateCaptionErr
 }
 
@@ -525,6 +527,24 @@ func TestEdit_Success(t *testing.T) {
 	}
 	if repo.lastUpdateCaptionID != 2 || repo.lastUpdateCaptionVal != "new caption" {
 		t.Fatalf("unexpected update call: id=%d caption=%q", repo.lastUpdateCaptionID, repo.lastUpdateCaptionVal)
+	}
+}
+
+func TestEdit_ReparsesHashtags(t *testing.T) {
+	repo := &fakePostRepo{getForDeleteP: entity.Post{ID: 2, UserID: 1}}
+	uc := New(repo, &fakeHashtagRepo{}, nil, newTestStorage(t), nopLogger{})
+
+	if err := uc.Edit(context.Background(), 1, 2, "now with #golang and #testing"); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	want := []string{"golang", "testing"}
+	if len(repo.lastUpdateCaptionTags) != len(want) {
+		t.Fatalf("expected hashtags %v, got %v", want, repo.lastUpdateCaptionTags)
+	}
+	for i, tag := range want {
+		if repo.lastUpdateCaptionTags[i] != tag {
+			t.Fatalf("expected hashtags %v, got %v", want, repo.lastUpdateCaptionTags)
+		}
 	}
 }
 

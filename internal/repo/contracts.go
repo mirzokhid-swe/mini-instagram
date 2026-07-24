@@ -33,7 +33,7 @@ type Post interface {
 	IsLiked(ctx context.Context, userID, postID int64) (bool, error)
 	GetForDelete(ctx context.Context, postID int64) (entity.Post, error)
 	SoftDelete(ctx context.Context, postID int64) error
-	UpdateCaption(ctx context.Context, postID int64, caption string) error
+	UpdateCaption(ctx context.Context, postID int64, caption string, hashtags []string) error
 
 	// GetOwner returns the post's owner id, or entity.ErrPostNotFound if the
 	// post is missing or soft-deleted. Used by the cache-backed like/unlike

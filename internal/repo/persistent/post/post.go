@@ -233,13 +233,35 @@ func (r *PostRepo) SoftDelete(ctx context.Context, postID int64) error {
 	return nil
 }
 
-func (r *PostRepo) UpdateCaption(ctx context.Context, postID int64, caption string) error {
-	const query = `UPDATE posts SET caption = $1, updated_at = now() WHERE id = $2`
+func (r *PostRepo) UpdateCaption(ctx context.Context, postID int64, caption string, hashtags []string) error {
+	return r.pool.WithinTx(ctx, func(tx pgx.Tx) error {
+		const query = `UPDATE posts SET caption = $1, updated_at = now() WHERE id = $2`
+		if _, err := tx.Exec(ctx, query, caption, postID); err != nil {
+			return fmt.Errorf("update post caption: %w", err)
+		}
 
-	if _, err := r.pool.Pool.Exec(ctx, query, caption, postID); err != nil {
-		return fmt.Errorf("update post caption: %w", err)
-	}
-	return nil
+		if _, err := tx.Exec(ctx, `DELETE FROM post_hashtags WHERE post_id = $1`, postID); err != nil {
+			return fmt.Errorf("clear post hashtags: %w", err)
+		}
+
+		for _, name := range hashtags {
+			var hashtagID int64
+			if err := tx.QueryRow(ctx,
+				`INSERT INTO hashtags (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+				name,
+			).Scan(&hashtagID); err != nil {
+				return fmt.Errorf("upsert hashtag %q: %w", name, err)
+			}
+
+			if _, err := tx.Exec(ctx,
+				`INSERT INTO post_hashtags (post_id, hashtag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+				postID, hashtagID,
+			); err != nil {
+				return fmt.Errorf("link hashtag %q: %w", name, err)
+			}
+		}
+		return nil
+	})
 }
 
 func (r *PostRepo) CountFeed(ctx context.Context, callerID int64) (int64, error) {

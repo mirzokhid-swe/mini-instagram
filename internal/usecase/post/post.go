@@ -514,7 +514,7 @@ func (u *UseCase) Edit(ctx context.Context, callerID, postID int64, caption stri
 		return entity.NewValidationError("caption", fmt.Sprintf("caption exceeds %d characters", MaxCaptionLength))
 	}
 
-	if err := u.posts.UpdateCaption(ctx, postID, caption); err != nil {
+	if err := u.posts.UpdateCaption(ctx, postID, caption, parseHashtags(caption)); err != nil {
 		return fmt.Errorf("update post caption: %w", err)
 	}
 	return nil
